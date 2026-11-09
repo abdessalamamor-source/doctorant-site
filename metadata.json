@@ -1,0 +1,6 @@
+{
+  "name": "DocCandidature",
+  "description": "Plateforme de gestion des candidatures au doctorat - Espace Candidat et Espace Administrateur",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
