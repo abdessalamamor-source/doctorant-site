@@ -1,41 +1,38 @@
 package com.example.ui.screens.admin
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Science
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -45,11 +42,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -60,18 +58,24 @@ import com.example.data.model.DoctoralApplication
 import com.example.ui.AppScreen
 import com.example.ui.DoctoralViewModel
 import com.example.ui.components.DocumentItemCard
+import com.example.ui.components.ResponsivePageContainer
 import com.example.ui.components.StatusBadge
 import com.example.ui.components.UniversityHeader
-import com.example.ui.theme.AcademicGold
+import com.example.ui.theme.AcademicGoldDark
 import com.example.ui.theme.AccentBlue
+import com.example.ui.theme.BackgroundLight
 import com.example.ui.theme.CardBorder
 import com.example.ui.theme.StatusAcceptedColor
-import com.example.ui.theme.StatusIncompleteColor
-import com.example.ui.theme.StatusPendingColor
-import com.example.ui.theme.StatusPreselectedColor
+import com.example.ui.theme.StatusDocsRequestedColor
 import com.example.ui.theme.StatusRefusedColor
 import com.example.ui.theme.StatusUnderReviewColor
+import com.example.ui.theme.TextMuted
+import com.example.ui.theme.TextPrimary
+import com.example.ui.theme.TextSecondary
 import com.example.ui.theme.UniversityNavy
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -86,19 +90,46 @@ fun AdminCandidateDetailScreen(
     val documents by viewModel.activeApplicationDocuments.collectAsState()
     val history by viewModel.activeApplicationHistory.collectAsState()
 
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
     var showStatusDialog by remember { mutableStateOf(false) }
     var targetStatus by remember { mutableStateOf<ApplicationStatus?>(null) }
+    var feedbackBanner by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+
+    val saveReceiptLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/pdf")
+    ) { uri ->
+        val item = app ?: return@rememberLauncherForActivityResult
+        if (uri != null) {
+            scope.launch {
+                val res = withContext(Dispatchers.IO) {
+                    try {
+                        val bytes = viewModel.getCandidateReceiptPdfBytes(item)
+                        context.contentResolver.openOutputStream(uri)?.use {
+                            it.write(bytes)
+                            it.flush()
+                        } ?: return@withContext false to "Impossible de créer le fichier PDF."
+                        true to "Fiche récapitulative PDF enregistrée avec succès."
+                    } catch (e: Exception) {
+                        false to "Erreur PDF : ${e.localizedMessage}"
+                    }
+                }
+                feedbackBanner = res
+            }
+        }
+    }
 
     val dateFormat = remember { SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.FRANCE) }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF8FAFC))
+            .background(BackgroundLight)
             .testTag("admin_candidate_detail_screen")
     ) {
         UniversityHeader(
-            title = "Dossier Candidat ${app?.id ?: ""}",
+            title = "Dossier ${app?.id ?: ""}",
             subtitle = app?.candidateName ?: "Chargement...",
             currentUser = currentUser,
             onBack = { viewModel.navigateTo(AppScreen.ADMIN_CANDIDATES_LIST) }
@@ -106,80 +137,111 @@ fun AdminCandidateDetailScreen(
 
         if (app == null) {
             Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                Text("Dossier introuvable", color = Color.Gray)
+                Text("Dossier introuvable", color = TextSecondary, fontSize = 15.sp)
             }
         } else {
             val item = app!!
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp)
-            ) {
-                // Header Status Card & Action Buttons
+            ResponsivePageContainer { _ ->
+                if (feedbackBanner != null) {
+                    val (ok, msg) = feedbackBanner!!
+                    Surface(
+                        color = (if (ok) StatusAcceptedColor else StatusRefusedColor).copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = msg,
+                            color = if (ok) StatusAcceptedColor else StatusRefusedColor,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+
+                // Header Status Card & Evaluation Actions
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color.White),
                     border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder),
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column {
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        if (item.isTestData) {
+                            Surface(
+                                color = com.example.ui.theme.AcademicGoldLight,
+                                shape = RoundedCornerShape(10.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, AcademicGoldDark.copy(alpha = 0.5f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
                                 Text(
-                                    text = item.candidateName,
+                                    text = "DOSSIER DE DÉMONSTRATION (ENVIRONNEMENT DE TEST) — Aucune notification ou e-mail réel ne sera envoyé.",
+                                    fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 17.sp,
-                                    color = UniversityNavy
-                                )
-                                Text(
-                                    text = "Numéro : ${item.id} • Déposé le ${dateFormat.format(Date(item.submissionDate))}",
-                                    fontSize = 11.sp,
-                                    color = Color(0xFF64748B)
+                                    color = AcademicGoldDark,
+                                    modifier = Modifier.padding(12.dp)
                                 )
                             }
-                            StatusBadge(status = item.status)
+                            Spacer(modifier = Modifier.height(12.dp))
                         }
 
+                        Text(
+                            text = item.candidateName,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            color = UniversityNavy
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Dossier ${item.id} • Candidat ${item.candidateId}",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = TextMuted
+                        )
+                        Text(
+                            text = "Soumis le ${dateFormat.format(Date(item.submissionDate))}",
+                            fontSize = 13.sp,
+                            color = TextMuted
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        StatusBadge(status = item.status)
+
                         if (item.adminComment.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(10.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
                             Surface(
-                                color = Color(0xFFF8FAFC),
-                                shape = RoundedCornerShape(8.dp),
+                                color = BackgroundLight,
+                                shape = RoundedCornerShape(10.dp),
                                 border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Column(modifier = Modifier.padding(10.dp)) {
+                                Column(modifier = Modifier.padding(12.dp)) {
                                     Text(
-                                        text = "Dernier commentaire de l'administration :",
+                                        text = "Dernier commentaire de la commission :",
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp,
+                                        fontSize = 13.sp,
                                         color = UniversityNavy
                                     )
-                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Spacer(modifier = Modifier.height(4.dp))
                                     Text(
                                         text = item.adminComment,
-                                        fontSize = 12.sp,
-                                        color = Color(0xFF334155)
+                                        fontSize = 14.sp,
+                                        color = TextPrimary,
+                                        lineHeight = 20.sp
                                     )
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(14.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
 
-                        // Status action buttons
                         Text(
-                            text = "Actions d'évaluation de la commission :",
+                            text = "Décision & suivi du dossier :",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            color = Color(0xFF334155)
+                            fontSize = 15.sp,
+                            color = TextPrimary
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -190,32 +252,29 @@ fun AdminCandidateDetailScreen(
                                     targetStatus = ApplicationStatus.UNDER_REVIEW
                                     showStatusDialog = true
                                 },
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.weight(1f).testTag("btn_status_under_review")
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 48.dp)
+                                    .testTag("btn_status_under_review")
                             ) {
-                                Text("En cours", fontSize = 11.sp)
+                                Text("En examen", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = StatusUnderReviewColor)
                             }
 
                             OutlinedButton(
                                 onClick = {
-                                    targetStatus = ApplicationStatus.INCOMPLETE
+                                    targetStatus = ApplicationStatus.DOCS_REQUESTED
                                     showStatusDialog = true
                                 },
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.weight(1f).testTag("btn_status_incomplete")
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 48.dp)
+                                    .testTag("btn_status_docs_requested")
                             ) {
-                                Text("Incomplet", fontSize = 11.sp, color = StatusIncompleteColor)
-                            }
-
-                            OutlinedButton(
-                                onClick = {
-                                    targetStatus = ApplicationStatus.PRESELECTED
-                                    showStatusDialog = true
-                                },
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.weight(1f).testTag("btn_status_preselected")
-                            ) {
-                                Text("Présélection", fontSize = 11.sp, color = StatusPreselectedColor)
+                                Text("Demander docs", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = StatusDocsRequestedColor)
                             }
                         }
 
@@ -231,12 +290,15 @@ fun AdminCandidateDetailScreen(
                                     showStatusDialog = true
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = StatusAcceptedColor),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.weight(1f).testTag("btn_status_accepted")
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 48.dp)
+                                    .testTag("btn_status_accepted")
                             ) {
-                                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Accepter", fontSize = 12.sp)
+                                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Accepter", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             }
 
                             Button(
@@ -245,120 +307,140 @@ fun AdminCandidateDetailScreen(
                                     showStatusDialog = true
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = StatusRefusedColor),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.weight(1f).testTag("btn_status_refused")
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 48.dp)
+                                    .testTag("btn_status_refused")
                             ) {
-                                Icon(Icons.Default.Cancel, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Refuser", fontSize = 12.sp)
+                                Icon(Icons.Default.Cancel, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Refuser", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        OutlinedButton(
+                            onClick = { saveReceiptLauncher.launch("Dossier_${item.id}.pdf") },
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 46.dp)
+                        ) {
+                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Exporter la fiche candidat (PDF)", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = UniversityNavy)
                         }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Section 1: Informations Personnelles
+                // Section 1: Personal Info
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color.White),
                     border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(18.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Person, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.Person, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(22.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("État Civil & Coordonnées", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = UniversityNavy)
+                            Text("État civil & coordonnées", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = UniversityNavy)
                         }
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                        AdminDetailGridRow("Nom et Prénom", item.candidateName)
+                        AdminDetailGridRow("Nom complet", item.candidateName)
+                        AdminDetailGridRow("Identifiant candidat", item.candidateId)
+                        AdminDetailGridRow("Date de naissance", item.candidateBirthDate.ifBlank { "Non renseignée" })
                         AdminDetailGridRow("CIN", item.candidateCin)
                         AdminDetailGridRow("CNE / Code Massar", item.candidateCne)
                         AdminDetailGridRow("Adresse e-mail", item.candidateEmail)
                         AdminDetailGridRow("Téléphone", item.candidatePhone)
+                        AdminDetailGridRow("Adresse", listOf(item.candidateAddress, item.candidateCity).filter { it.isNotBlank() }.joinToString(", ").ifBlank { "Non renseignée" })
+                        AdminDetailGridRow("Établissement d'origine", item.candidateOriginEstablishment.ifBlank { "Non renseigné" })
                     }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Section 2: Parcours Universitaire
+                // Section 2: Diploma
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color.White),
                     border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(18.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.School, contentDescription = null, tint = AcademicGold, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.School, contentDescription = null, tint = AcademicGoldDark, modifier = Modifier.size(22.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Diplômes & Cursus Universitaire", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = UniversityNavy)
+                            Text("Diplômes & cursus universitaire", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = UniversityNavy)
                         }
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                        AdminDetailGridRow("Intitulé du Diplôme", item.diplomaTitle)
-                        AdminDetailGridRow("Type de Diplôme", item.diplomaType)
-                        AdminDetailGridRow("Spécialité du Diplôme", item.diplomaSpeciality.ifBlank { "N/A" })
-                        AdminDetailGridRow("Université d'obtention", item.diplomaUniversity)
-                        AdminDetailGridRow("Établissement", item.diplomaEstablishment.ifBlank { "N/A" })
-                        AdminDetailGridRow("Année & Mention", "${item.diplomaYear} • Mention ${item.diplomaMention}")
-                        AdminDetailGridRow("Moyenne Générale", "${item.diplomaGpa} / 20")
+                        AdminDetailGridRow("Intitulé du diplôme", item.diplomaTitle)
+                        AdminDetailGridRow("Type de diplôme", item.diplomaType)
+                        AdminDetailGridRow("Spécialité", item.diplomaSpeciality.ifBlank { "Non précisée" })
+                        AdminDetailGridRow("Université", item.diplomaUniversity)
+                        AdminDetailGridRow("Établissement", item.diplomaEstablishment.ifBlank { "Non précisé" })
+                        AdminDetailGridRow("Année & Mention", "${item.diplomaYear} • ${item.diplomaMention}")
+                        AdminDetailGridRow("Moyenne générale", "${item.diplomaGpa} / 20")
                     }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Section 3: Choix Doctoral
+                // Section 3: Doctoral Project
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color.White),
                     border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(18.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Science, contentDescription = null, tint = UniversityNavy, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.Science, contentDescription = null, tint = UniversityNavy, modifier = Modifier.size(22.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Projet Doctoral Choisi", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = UniversityNavy)
+                            Text("Projet doctoral choisi", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = UniversityNavy)
                         }
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
                         AdminDetailGridRow("Spécialité", item.specialityName)
-                        AdminDetailGridRow("Sujet de Recherche", item.subjectTitle)
-                        AdminDetailGridRow("Directeur de Thèse", item.supervisorName)
+                        AdminDetailGridRow("Sujet de recherche", item.subjectTitle)
+                        AdminDetailGridRow("Directeur de thèse", item.supervisorName)
                         AdminDetailGridRow("Laboratoire", item.laboratory)
                         if (!item.interviewDate.isNullOrBlank()) {
-                            AdminDetailGridRow("Convocation entretien", "${item.interviewDate} (${item.interviewLocation})")
+                            AdminDetailGridRow("Entretien programmé", "${item.interviewDate} (${item.interviewLocation ?: "École Doctorale"})")
                         }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Section 4: Documents Justificatifs PDF
+                // Section 4: PDF Documents
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color.White),
                     border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(18.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Description, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.Description, contentDescription = null, tint = StatusRefusedColor, modifier = Modifier.size(22.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Documents Justificatifs PDF (${documents.size})", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = UniversityNavy)
+                            Text("Documents justificatifs PDF (${documents.size})", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = UniversityNavy)
                         }
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
                         if (documents.isEmpty()) {
-                            Text("Aucun document déposé", color = Color.Gray, fontSize = 12.sp)
+                            Text("Aucun document PDF déposé.", color = TextMuted, fontSize = 14.sp)
                         } else {
                             documents.forEach { doc ->
                                 DocumentItemCard(
                                     doc = doc,
-                                    onView = {},
                                     modifier = Modifier.padding(vertical = 4.dp)
                                 )
                             }
@@ -368,23 +450,23 @@ fun AdminCandidateDetailScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Section 5: Historique des Décisions
+                // Section 5: History
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color.White),
                     border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(18.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.History, contentDescription = null, tint = UniversityNavy, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.History, contentDescription = null, tint = UniversityNavy, modifier = Modifier.size(22.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Historique des Décisions & Traçabilité", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = UniversityNavy)
+                            Text("Historique des décisions", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = UniversityNavy)
                         }
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
                         if (history.isEmpty()) {
-                            Text("Aucune modification de statut enregistrée.", fontSize = 12.sp, color = Color.Gray)
+                            Text("Aucune modification de statut enregistrée.", fontSize = 14.sp, color = TextMuted)
                         } else {
                             history.forEach { hist ->
                                 Column(modifier = Modifier.padding(vertical = 6.dp)) {
@@ -394,27 +476,27 @@ fun AdminCandidateDetailScreen(
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         StatusBadge(status = hist.status)
-                                        Text(text = dateFormat.format(Date(hist.timestamp)), fontSize = 11.sp, color = Color(0xFF64748B))
+                                        Text(text = dateFormat.format(Date(hist.timestamp)), fontSize = 12.sp, color = TextMuted)
                                     }
-                                    Spacer(modifier = Modifier.height(3.dp))
-                                    Text(text = hist.comment, fontSize = 12.sp, color = Color(0xFF334155))
-                                    Text(text = "Par : ${hist.updatedBy}", fontSize = 10.sp, color = Color.Gray)
-                                    Divider(color = Color(0xFFF1F5F9), modifier = Modifier.padding(top = 6.dp))
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(text = hist.comment, fontSize = 14.sp, color = TextPrimary)
+                                    Text(text = "Par : ${hist.updatedBy}", fontSize = 13.sp, color = TextMuted)
+                                    HorizontalDivider(color = Color(0xFFE2E8F0), modifier = Modifier.padding(top = 8.dp))
                                 }
                             }
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(30.dp))
+                Spacer(modifier = Modifier.height(28.dp))
             }
         }
     }
 
     if (showStatusDialog && targetStatus != null && app != null) {
         StatusChangeDialog(
-            app = app!!,
             targetStatus = targetStatus!!,
+            isTestData = app!!.isTestData,
             onDismiss = { showStatusDialog = false },
             onConfirm = { comment, interviewDate, interviewLoc ->
                 viewModel.updateStatusByAdmin(
@@ -425,6 +507,11 @@ fun AdminCandidateDetailScreen(
                     interviewLocation = interviewLoc
                 ) { ok, err ->
                     showStatusDialog = false
+                    feedbackBanner = if (ok) {
+                        true to "Statut mis à jour : ${targetStatus!!.label}"
+                    } else {
+                        false to (err ?: "Erreur lors de la mise à jour.")
+                    }
                 }
             }
         )
@@ -433,38 +520,34 @@ fun AdminCandidateDetailScreen(
 
 @Composable
 fun AdminDetailGridRow(label: String, value: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 3.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(text = label, fontSize = 12.sp, color = Color(0xFF64748B), modifier = Modifier.weight(1f))
-        Text(text = value, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F172A), modifier = Modifier.weight(1.3f))
+    Column(modifier = Modifier.padding(vertical = 5.dp)) {
+        Text(text = label, fontSize = 13.sp, color = TextMuted, fontWeight = FontWeight.Medium)
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(text = value, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
     }
 }
 
 @Composable
 fun StatusChangeDialog(
-    app: DoctoralApplication,
     targetStatus: ApplicationStatus,
+    isTestData: Boolean = false,
     onDismiss: () -> Unit,
     onConfirm: (comment: String, interviewDate: String?, interviewLocation: String?) -> Unit
 ) {
     var comment by remember {
         mutableStateOf(
             when (targetStatus) {
-                ApplicationStatus.UNDER_REVIEW -> "Dossier transmis au comité scientifique pour examen approfondi."
-                ApplicationStatus.INCOMPLETE -> "Certaines pièces justificatives sont manquantes ou illisibles. Veuillez fournir les relevés conformes."
-                ApplicationStatus.PRESELECTED -> "Candidature présélectionnée. Convoqué(e) à l'audition orale devant le jury doctoral."
-                ApplicationStatus.ACCEPTED -> "Félicitations ! Votre candidature est définitivement acceptée pour inscription au doctorat."
-                ApplicationStatus.REFUSED -> "La commission scientifique regrette de ne pas pouvoir retenir votre candidature pour cette session."
+                ApplicationStatus.UNDER_REVIEW -> "Dossier transmis à la commission scientifique pour examen approfondi."
+                ApplicationStatus.DOCS_REQUESTED -> "Veuillez joindre les pièces complémentaires ou remplacer les documents illisibles."
+                ApplicationStatus.ACCEPTED -> "Félicitations ! Votre candidature est acceptée pour l'inscription en doctorat."
+                ApplicationStatus.REFUSED -> "La commission scientifique n'a pas retenu votre candidature pour cette session."
                 else -> ""
             }
         )
     }
-    var interviewDate by remember { mutableStateOf("25 Novembre 2026 à 09h30") }
-    var interviewLoc by remember { mutableStateOf("Salle des Thèses, Faculté des Sciences") }
+    var scheduleInterview by remember { mutableStateOf(false) }
+    var interviewDate by remember { mutableStateOf("") }
+    var interviewLoc by remember { mutableStateOf("") }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -477,42 +560,57 @@ fun StatusChangeDialog(
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text(
-                    text = "Modifier le Statut du Dossier",
+                    text = "Modifier le statut du dossier",
                     fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
+                    fontSize = 18.sp,
                     color = UniversityNavy
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = "Nouveau statut : ", fontSize = 12.sp, color = Color.Gray)
-                    StatusBadge(status = targetStatus)
-                }
+                Spacer(modifier = Modifier.height(8.dp))
+                StatusBadge(status = targetStatus)
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                if (targetStatus == ApplicationStatus.PRESELECTED) {
-                    OutlinedTextField(
-                        value = interviewDate,
-                        onValueChange = { interviewDate = it },
-                        label = { Text("Date et Heure de l'entretien") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth().testTag("input_interview_date")
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = interviewLoc,
-                        onValueChange = { interviewLoc = it },
-                        label = { Text("Lieu de l'entretien") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth().testTag("input_interview_loc")
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+                if (targetStatus == ApplicationStatus.UNDER_REVIEW || targetStatus == ApplicationStatus.ACCEPTED) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Checkbox(
+                            checked = scheduleInterview,
+                            onCheckedChange = { scheduleInterview = it }
+                        )
+                        Text(
+                            text = "Joindre une convocation d'entretien",
+                            fontSize = 14.sp,
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+
+                    if (scheduleInterview) {
+                        OutlinedTextField(
+                            value = interviewDate,
+                            onValueChange = { interviewDate = it },
+                            label = { Text("Date et heure de l'entretien", fontSize = 14.sp) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("input_interview_date")
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = interviewLoc,
+                            onValueChange = { interviewLoc = it },
+                            label = { Text("Lieu / Salle", fontSize = 14.sp) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("input_interview_loc")
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
                 }
 
                 OutlinedTextField(
                     value = comment,
                     onValueChange = { comment = it },
-                    label = { Text("Commentaire de l'administration *") },
+                    label = { Text("Commentaire / Motif *", fontSize = 14.sp) },
                     minLines = 3,
                     maxLines = 5,
                     modifier = Modifier.fillMaxWidth().testTag("input_admin_comment")
@@ -520,33 +618,44 @@ fun StatusChangeDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = "Une notification dans l'application et une copie e-mail seront automatiquement adressées au candidat.",
-                    fontSize = 10.sp,
-                    color = Color.Gray
+                    text = if (isTestData) {
+                        "Dossier de démonstration : modification enregistrée dans l'environnement de test sans envoi d'e-mail ni de notification réelle."
+                    } else {
+                        "Ce changement sera enregistré en base de données et visible dans l'espace personnel du candidat."
+                    },
+                    fontSize = 13.sp,
+                    color = TextMuted
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Row(
-                    horizontalArrangement = Arrangement.End,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    OutlinedButton(onClick = onDismiss) {
-                        Text("Annuler")
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                    ) {
+                        Text("Annuler", fontSize = 14.sp, color = TextPrimary)
                     }
-                    Spacer(modifier = Modifier.width(10.dp))
                     Button(
                         onClick = {
                             onConfirm(
-                                comment,
-                                if (targetStatus == ApplicationStatus.PRESELECTED) interviewDate else null,
-                                if (targetStatus == ApplicationStatus.PRESELECTED) interviewLoc else null
+                                comment.trim(),
+                                if (scheduleInterview && interviewDate.isNotBlank()) interviewDate.trim() else null,
+                                if (scheduleInterview && interviewLoc.isNotBlank()) interviewLoc.trim() else null
                             )
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = targetStatus.getColor()),
-                        modifier = Modifier.testTag("btn_confirm_status_change")
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .weight(1.2f)
+                            .heightIn(min = 48.dp)
+                            .testTag("btn_confirm_status_change")
                     ) {
-                        Text("Enregistrer et notifier")
+                        Text("Enregistrer", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

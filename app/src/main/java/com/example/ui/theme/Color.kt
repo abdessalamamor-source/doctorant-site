@@ -4,32 +4,32 @@ import androidx.compose.ui.graphics.Color
 
 // Academic Navy Primary Palette
 val UniversityNavy = Color(0xFF0F2C59)
-val UniversityNavyDark = Color(0xFF0A1E3D)
-val UniversityNavyLight = Color(0xFF1B3B6F)
-val UniversitySlate = Color(0xFF334155)
+val UniversityNavyDark = Color(0xFF091D3E)
+val UniversityNavyLight = Color(0xFF1E427E)
+val UniversitySlate = Color(0xFF1E293B)
 
-// Academic Accent Gold / Amber
-val AcademicGold = Color(0xFFD4AF37)
-val AcademicGoldDark = Color(0xFFB8860B)
-val AcademicGoldLight = Color(0xFFFDE68A)
+// Academic Accent Gold / Amber (high contrast variants)
+val AcademicGold = Color(0xFFF5C451)         // Visible on dark navy backgrounds
+val AcademicGoldDark = Color(0xFF92400E)     // High-contrast on light backgrounds
+val AcademicGoldLight = Color(0xFFFEF3C7)
 
 // Secondary & Accent Blues
-val AccentBlue = Color(0xFF2563EB)
-val AccentBlueLight = Color(0xFF60A5FA)
-val SoftBlueBg = Color(0xFFF0F5FA)
+val AccentBlue = Color(0xFF1D4ED8)           // Accessible blue (> 6.5:1 on white)
+val AccentBlueLight = Color(0xFF93C5FD)
+val SoftBlueBg = Color(0xFFEFF6FF)
 
-// Status Colors
-val StatusPendingColor = Color(0xFFD97706)      // Ambre / Jaune
-val StatusUnderReviewColor = Color(0xFF2563EB)  // Bleu
-val StatusIncompleteColor = Color(0xFFEA580C)   // Orange
-val StatusPreselectedColor = Color(0xFF7C3AED)  // Violet
-val StatusAcceptedColor = Color(0xFF16A34A)     // Vert
-val StatusRefusedColor = Color(0xFFDC2626)      // Rouge
+// High-Contrast Status Colors (WCAG AA/AAA on white/light backgrounds)
+val StatusDraftColor = Color(0xFF475569)         // Brouillon - Ardoise foncé
+val StatusSubmittedColor = Color(0xFFB45309)     // Soumise - Ambre foncé
+val StatusUnderReviewColor = Color(0xFF1D4ED8)   // En cours d'examen - Bleu royal
+val StatusDocsRequestedColor = Color(0xFFC2410C) // Documents demandés - Orange foncé
+val StatusAcceptedColor = Color(0xFF15803D)      // Acceptée - Vert foncé
+val StatusRefusedColor = Color(0xFFB91C1C)       // Refusée - Rouge foncé
 
-// Neutrals
+// Neutrals (High contrast dark text on clean light surfaces)
 val SurfaceWhite = Color(0xFFFFFFFF)
 val BackgroundLight = Color(0xFFF8FAFC)
-val CardBorder = Color(0xFFE2E8F0)
-val TextPrimary = Color(0xFF0F172A)
-val TextSecondary = Color(0xFF64748B)
-val TextMuted = Color(0xFF94A3B8)
+val CardBorder = Color(0xFFCBD5E1)
+val TextPrimary = Color(0xFF0F172A)     // Noir bleuté très contrasté
+val TextSecondary = Color(0xFF1E293B)   // Gris très foncé pour sous-titres/corps
+val TextMuted = Color(0xFF334155)       // Ardoise foncé (évite le gris clair illisible)

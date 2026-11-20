@@ -1,34 +1,29 @@
 package com.example.ui.screens.candidate
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.School
-import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
@@ -36,13 +31,12 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -59,9 +53,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -72,15 +68,20 @@ import com.example.ui.AppScreen
 import com.example.ui.DoctoralViewModel
 import com.example.ui.components.DocumentItemCard
 import com.example.ui.components.ProgressStepper
+import com.example.ui.components.ResponsivePageContainer
 import com.example.ui.components.UniversityHeader
-import com.example.ui.theme.AcademicGold
+import com.example.ui.theme.AcademicGoldDark
+import com.example.ui.theme.AcademicGoldLight
 import com.example.ui.theme.AccentBlue
+import com.example.ui.theme.BackgroundLight
 import com.example.ui.theme.CardBorder
 import com.example.ui.theme.StatusAcceptedColor
 import com.example.ui.theme.StatusRefusedColor
+import com.example.ui.theme.TextMuted
+import com.example.ui.theme.TextPrimary
+import com.example.ui.theme.TextSecondary
 import com.example.ui.theme.UniversityNavy
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ApplicationWizardScreen(
     viewModel: DoctoralViewModel,
@@ -91,16 +92,16 @@ fun ApplicationWizardScreen(
     val allSubjects by viewModel.allSubjects.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
 
-    var showDraftSavedToast by remember { mutableStateOf(false) }
+    var draftDialogResult by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
     var showSubmissionSuccessDialog by remember { mutableStateOf(false) }
     var generatedAppId by remember { mutableStateOf("") }
 
-    val stepTitles = listOf("Profil", "Diplôme", "Sujet", "Documents", "Validation")
+    val stepTitles = listOf("Profil", "Diplôme", "Sujet", "PDF", "Valider")
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF8FAFC))
+            .background(BackgroundLight)
             .testTag("application_wizard_screen")
     ) {
         UniversityHeader(
@@ -116,13 +117,7 @@ fun ApplicationWizardScreen(
             }
         )
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp)
-        ) {
-            // Step indicator
+        ResponsivePageContainer { isWide ->
             ProgressStepper(
                 currentStep = wizardState.step,
                 steps = stepTitles
@@ -130,40 +125,38 @@ fun ApplicationWizardScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Validation Error Alert
             if (wizardState.validationError != null) {
                 Surface(
                     color = StatusRefusedColor.copy(alpha = 0.1f),
                     shape = RoundedCornerShape(10.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, StatusRefusedColor.copy(alpha = 0.4f)),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, StatusRefusedColor.copy(alpha = 0.5f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(12.dp)
+                        modifier = Modifier.padding(14.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Warning,
                             contentDescription = null,
                             tint = StatusRefusedColor,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(22.dp)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
                         Text(
                             text = wizardState.validationError ?: "",
                             color = StatusRefusedColor,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                 }
                 Spacer(modifier = Modifier.height(14.dp))
             }
 
-            // Step Content
             when (wizardState.step) {
-                1 -> WizardStep1PersonalInfo(viewModel = viewModel)
-                2 -> WizardStep2DiplomaInfo(viewModel = viewModel)
+                1 -> WizardStep1PersonalInfo(viewModel = viewModel, isWide = isWide)
+                2 -> WizardStep2DiplomaInfo(viewModel = viewModel, isWide = isWide)
                 3 -> WizardStep3SpecialityAndSubject(
                     viewModel = viewModel,
                     specialities = specialities.filter { it.isActive },
@@ -179,112 +172,145 @@ fun ApplicationWizardScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Wizard Bottom Navigation Bar
+            // Wizard Bottom Action Bar
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (wizardState.step > 1) {
                     OutlinedButton(
                         onClick = { viewModel.updateWizardStep(wizardState.step - 1) },
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.testTag("wizard_btn_previous")
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .testTag("wizard_btn_previous")
                     ) {
-                        Text("Précédent", fontSize = 13.sp)
+                        Text("Précédent", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
                     }
                 } else {
                     OutlinedButton(
                         onClick = {
-                            viewModel.saveDraft {
-                                showDraftSavedToast = true
+                            viewModel.saveDraft { ok, msg ->
+                                draftDialogResult = ok to msg
                             }
                         },
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.testTag("wizard_btn_draft")
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .testTag("wizard_btn_draft")
                     ) {
-                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Brouillon", fontSize = 12.sp)
+                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Brouillon", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
                     }
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (wizardState.step < 5) {
-                        Button(
-                            onClick = { viewModel.updateWizardStep(wizardState.step + 1) },
-                            colors = ButtonDefaults.buttonColors(containerColor = UniversityNavy),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.testTag("wizard_btn_next")
-                        ) {
-                            Text("Suivant", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
-                    } else {
-                        Button(
+                if (wizardState.step < 5) {
+                    if (wizardState.step > 1) {
+                        OutlinedButton(
                             onClick = {
-                                viewModel.submitApplication { appId ->
-                                    generatedAppId = appId
-                                    showSubmissionSuccessDialog = true
+                                viewModel.saveDraft { ok, msg ->
+                                    draftDialogResult = ok to msg
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = StatusAcceptedColor),
-                            shape = RoundedCornerShape(8.dp),
-                            enabled = !wizardState.isSubmitting,
-                            modifier = Modifier.testTag("wizard_btn_submit")
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                            modifier = Modifier.heightIn(min = 48.dp)
                         ) {
-                            if (wizardState.isSubmitting) {
-                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
-                            } else {
-                                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Valider et soumettre", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Icon(Icons.Default.Save, contentDescription = "Enregistrer brouillon", modifier = Modifier.size(18.dp))
+                        }
+                    }
+
+                    Button(
+                        onClick = { viewModel.updateWizardStep(wizardState.step + 1) },
+                        colors = ButtonDefaults.buttonColors(containerColor = UniversityNavy),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .testTag("wizard_btn_next")
+                    ) {
+                        Text("Suivant", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    Button(
+                        onClick = {
+                            viewModel.submitApplication { appId ->
+                                generatedAppId = appId
+                                showSubmissionSuccessDialog = true
                             }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = StatusAcceptedColor),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                        enabled = !wizardState.isSubmitting,
+                        modifier = Modifier
+                            .weight(1.3f)
+                            .heightIn(min = 50.dp)
+                            .testTag("wizard_btn_submit")
+                    ) {
+                        if (wizardState.isSubmitting) {
+                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
+                        } else {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Valider et soumettre", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(30.dp))
+            Spacer(modifier = Modifier.height(28.dp))
         }
     }
 
-    if (showDraftSavedToast) {
-        Dialog(onDismissRequest = { showDraftSavedToast = false }) {
+    if (draftDialogResult != null) {
+        val (ok, msg) = draftDialogResult!!
+        Dialog(onDismissRequest = { draftDialogResult = null }) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.padding(16.dp)
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(20.dp)
+                    modifier = Modifier.padding(22.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.CheckCircle,
+                        imageVector = if (ok) Icons.Default.CheckCircle else Icons.Default.Warning,
                         contentDescription = null,
-                        tint = StatusAcceptedColor,
-                        modifier = Modifier.size(36.dp)
+                        tint = if (ok) StatusAcceptedColor else StatusRefusedColor,
+                        modifier = Modifier.size(40.dp)
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "Brouillon sauvegardé !",
+                        text = if (ok) "Brouillon sauvegardé" else "Échec de la sauvegarde",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
+                        fontSize = 17.sp,
                         color = UniversityNavy
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Vous pouvez reprendre la saisie de votre candidature à tout moment.",
-                        fontSize = 12.sp,
-                        color = Color(0xFF64748B),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        text = msg,
+                        fontSize = 14.sp,
+                        color = TextSecondary,
+                        textAlign = TextAlign.Center
                     )
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                     Button(
-                        onClick = { showDraftSavedToast = false },
-                        colors = ButtonDefaults.buttonColors(containerColor = UniversityNavy)
+                        onClick = { draftDialogResult = null },
+                        colors = ButtonDefaults.buttonColors(containerColor = UniversityNavy),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
                     ) {
-                        Text("Continuer")
+                        Text("Continuer", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -308,59 +334,60 @@ fun ApplicationWizardScreen(
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .size(60.dp)
+                            .size(64.dp)
                             .clip(CircleShape)
-                            .background(StatusAcceptedColor.copy(alpha = 0.12f))
+                            .background(StatusAcceptedColor.copy(alpha = 0.14f))
                     ) {
                         Icon(
                             imageVector = Icons.Default.CheckCircle,
                             contentDescription = null,
                             tint = StatusAcceptedColor,
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(38.dp)
                         )
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Text(
-                        text = "Candidature Soumise avec Succès !",
+                        text = "Candidature soumise avec succès !",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp,
+                        fontSize = 19.sp,
                         color = UniversityNavy,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        textAlign = TextAlign.Center
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Text(
-                        text = "Votre dossier a été enregistré sous le numéro unique :",
-                        fontSize = 12.sp,
-                        color = Color(0xFF64748B)
+                        text = "Votre dossier officiel porte la référence :",
+                        fontSize = 14.sp,
+                        color = TextSecondary,
+                        textAlign = TextAlign.Center
                     )
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     Surface(
-                        color = UniversityNavy.copy(alpha = 0.08f),
-                        shape = RoundedCornerShape(8.dp)
+                        color = UniversityNavy.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(10.dp)
                     ) {
                         Text(
                             text = generatedAppId,
                             color = UniversityNavy,
                             fontWeight = FontWeight.ExtraBold,
-                            fontSize = 16.sp,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                            fontSize = 17.sp,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     Text(
-                        text = "Un e-mail de confirmation vous a été envoyé. Vous pouvez suivre l'avancement de votre dossier depuis votre tableau de bord en temps réel.",
-                        fontSize = 11.sp,
-                        color = Color(0xFF64748B),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        lineHeight = 16.sp
+                        text = "Votre candidature est enregistrée dans la base de données. Vous pouvez suivre son statut en temps réel depuis votre tableau de bord.",
+                        fontSize = 14.sp,
+                        color = TextSecondary,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 20.sp
                     )
 
                     Spacer(modifier = Modifier.height(20.dp))
@@ -371,10 +398,12 @@ fun ApplicationWizardScreen(
                             viewModel.navigateTo(AppScreen.CANDIDATE_DASHBOARD)
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = UniversityNavy),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
                     ) {
-                        Text("Accéder à mon suivi")
+                        Text("Accéder à mon suivi", fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -384,7 +413,7 @@ fun ApplicationWizardScreen(
 
 // STEP 1: PERSONAL INFO
 @Composable
-fun WizardStep1PersonalInfo(viewModel: DoctoralViewModel) {
+fun WizardStep1PersonalInfo(viewModel: DoctoralViewModel, isWide: Boolean) {
     val state by viewModel.wizardState.collectAsState()
 
     Card(
@@ -395,56 +424,69 @@ fun WizardStep1PersonalInfo(viewModel: DoctoralViewModel) {
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
             Text(
-                text = "1. Informations Personnelles du Candidat",
+                text = "1. Informations personnelles du candidat",
                 fontWeight = FontWeight.Bold,
-                fontSize = 15.sp,
+                fontSize = 17.sp,
                 color = UniversityNavy
             )
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Veuillez renseigner vos coordonnées d'état civil avec exactitude.",
-                fontSize = 11.sp,
-                color = Color(0xFF64748B)
+                text = "Les champs marqués d'un astérisque (*) sont obligatoires.",
+                fontSize = 14.sp,
+                color = TextMuted
             )
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+            if (isWide) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = state.nom,
+                        onValueChange = { v -> viewModel.updateWizardField { it.copy(nom = v) } },
+                        label = { Text("Nom *", fontSize = 14.sp) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f).testTag("input_nom")
+                    )
+                    OutlinedTextField(
+                        value = state.prenom,
+                        onValueChange = { v -> viewModel.updateWizardField { it.copy(prenom = v) } },
+                        label = { Text("Prénom *", fontSize = 14.sp) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f).testTag("input_prenom")
+                    )
+                }
+            } else {
                 OutlinedTextField(
                     value = state.nom,
                     onValueChange = { v -> viewModel.updateWizardField { it.copy(nom = v) } },
-                    label = { Text("Nom *") },
+                    label = { Text("Nom *", fontSize = 14.sp) },
                     singleLine = true,
-                    modifier = Modifier.weight(1f).testTag("input_nom")
+                    modifier = Modifier.fillMaxWidth().testTag("input_nom")
                 )
+                Spacer(modifier = Modifier.height(10.dp))
                 OutlinedTextField(
                     value = state.prenom,
                     onValueChange = { v -> viewModel.updateWizardField { it.copy(prenom = v) } },
-                    label = { Text("Prénom *") },
+                    label = { Text("Prénom *", fontSize = 14.sp) },
                     singleLine = true,
-                    modifier = Modifier.weight(1f).testTag("input_prenom")
+                    modifier = Modifier.fillMaxWidth().testTag("input_prenom")
                 )
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = state.cin,
                     onValueChange = { v -> viewModel.updateWizardField { it.copy(cin = v) } },
-                    label = { Text("CIN *") },
+                    label = { Text("CIN *", fontSize = 14.sp) },
                     singleLine = true,
                     modifier = Modifier.weight(1f).testTag("input_cin")
                 )
                 OutlinedTextField(
                     value = state.cneMassar,
                     onValueChange = { v -> viewModel.updateWizardField { it.copy(cneMassar = v) } },
-                    label = { Text("CNE / Code Massar *") },
+                    label = { Text("CNE / Massar *", fontSize = 14.sp) },
                     singleLine = true,
                     modifier = Modifier.weight(1f).testTag("input_cne")
                 )
@@ -455,7 +497,7 @@ fun WizardStep1PersonalInfo(viewModel: DoctoralViewModel) {
             OutlinedTextField(
                 value = state.dateNaissance,
                 onValueChange = { v -> viewModel.updateWizardField { it.copy(dateNaissance = v) } },
-                label = { Text("Date de naissance (JJ/MM/AAAA)") },
+                label = { Text("Date de naissance (JJ/MM/AAAA)", fontSize = 14.sp) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -465,7 +507,7 @@ fun WizardStep1PersonalInfo(viewModel: DoctoralViewModel) {
             OutlinedTextField(
                 value = state.email,
                 onValueChange = { v -> viewModel.updateWizardField { it.copy(email = v) } },
-                label = { Text("Adresse e-mail de contact *") },
+                label = { Text("Adresse e-mail de contact *", fontSize = 14.sp) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().testTag("input_email_contact")
@@ -476,28 +518,26 @@ fun WizardStep1PersonalInfo(viewModel: DoctoralViewModel) {
             OutlinedTextField(
                 value = state.telephone,
                 onValueChange = { v -> viewModel.updateWizardField { it.copy(telephone = v) } },
-                label = { Text("Numéro de téléphone (+212 ...)") },
+                label = { Text("Numéro de téléphone *", fontSize = 14.sp) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().testTag("input_telephone")
             )
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = state.adresse,
                     onValueChange = { v -> viewModel.updateWizardField { it.copy(adresse = v) } },
-                    label = { Text("Adresse postale") },
-                    modifier = Modifier.weight(1.4f)
+                    label = { Text("Adresse postale", fontSize = 14.sp) },
+                    modifier = Modifier.weight(1.3f)
                 )
                 OutlinedTextField(
                     value = state.ville,
                     onValueChange = { v -> viewModel.updateWizardField { it.copy(ville = v) } },
-                    label = { Text("Ville") },
+                    label = { Text("Ville", fontSize = 14.sp) },
+                    singleLine = true,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -507,7 +547,7 @@ fun WizardStep1PersonalInfo(viewModel: DoctoralViewModel) {
             OutlinedTextField(
                 value = state.etablissementOrigine,
                 onValueChange = { v -> viewModel.updateWizardField { it.copy(etablissementOrigine = v) } },
-                label = { Text("Établissement universitaire d'origine") },
+                label = { Text("Établissement universitaire d'origine", fontSize = 14.sp) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -518,7 +558,7 @@ fun WizardStep1PersonalInfo(viewModel: DoctoralViewModel) {
 // STEP 2: DIPLOMA INFO
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WizardStep2DiplomaInfo(viewModel: DoctoralViewModel) {
+fun WizardStep2DiplomaInfo(viewModel: DoctoralViewModel, isWide: Boolean) {
     val state by viewModel.wizardState.collectAsState()
 
     val diplomaOptions = listOf(
@@ -547,20 +587,20 @@ fun WizardStep2DiplomaInfo(viewModel: DoctoralViewModel) {
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
             Text(
-                text = "2. Parcours Universitaire & Diplômes",
+                text = "2. Parcours universitaire & diplômes",
                 fontWeight = FontWeight.Bold,
-                fontSize = 15.sp,
+                fontSize = 17.sp,
                 color = UniversityNavy
             )
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Précisez les détails du dernier diplôme d'accès obtenu pour la thèse.",
-                fontSize = 11.sp,
-                color = Color(0xFF64748B)
+                text = "Renseignez votre dernier diplôme permettant l'inscription en doctorat.",
+                fontSize = 14.sp,
+                color = TextMuted
             )
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // Diploma type selector dropdown
             ExposedDropdownMenuBox(
                 expanded = diplomaDropdownExpanded,
                 onExpandedChange = { diplomaDropdownExpanded = !diplomaDropdownExpanded },
@@ -570,7 +610,7 @@ fun WizardStep2DiplomaInfo(viewModel: DoctoralViewModel) {
                     value = state.diplomaType,
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("Type de diplôme *") },
+                    label = { Text("Type de diplôme *", fontSize = 14.sp) },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = diplomaDropdownExpanded) },
                     modifier = Modifier.menuAnchor().fillMaxWidth().testTag("dropdown_diploma_type")
                 )
@@ -580,7 +620,7 @@ fun WizardStep2DiplomaInfo(viewModel: DoctoralViewModel) {
                 ) {
                     diplomaOptions.forEach { opt ->
                         DropdownMenuItem(
-                            text = { Text(opt) },
+                            text = { Text(opt, fontSize = 14.sp) },
                             onClick = {
                                 viewModel.updateWizardField { it.copy(diplomaType = opt) }
                                 diplomaDropdownExpanded = false
@@ -595,7 +635,7 @@ fun WizardStep2DiplomaInfo(viewModel: DoctoralViewModel) {
             OutlinedTextField(
                 value = state.diplomaTitle,
                 onValueChange = { v -> viewModel.updateWizardField { it.copy(diplomaTitle = v) } },
-                label = { Text("Intitulé exact du diplôme *") },
+                label = { Text("Intitulé exact du diplôme *", fontSize = 14.sp) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().testTag("input_diploma_title")
             )
@@ -605,7 +645,7 @@ fun WizardStep2DiplomaInfo(viewModel: DoctoralViewModel) {
             OutlinedTextField(
                 value = state.diplomaSpeciality,
                 onValueChange = { v -> viewModel.updateWizardField { it.copy(diplomaSpeciality = v) } },
-                label = { Text("Spécialité / Filière du diplôme") },
+                label = { Text("Spécialité du diplôme", fontSize = 14.sp) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -615,7 +655,7 @@ fun WizardStep2DiplomaInfo(viewModel: DoctoralViewModel) {
             OutlinedTextField(
                 value = state.diplomaUniversity,
                 onValueChange = { v -> viewModel.updateWizardField { it.copy(diplomaUniversity = v) } },
-                label = { Text("Université d'obtention *") },
+                label = { Text("Université d'obtention *", fontSize = 14.sp) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().testTag("input_diploma_univ")
             )
@@ -625,38 +665,35 @@ fun WizardStep2DiplomaInfo(viewModel: DoctoralViewModel) {
             OutlinedTextField(
                 value = state.diplomaEstablishment,
                 onValueChange = { v -> viewModel.updateWizardField { it.copy(diplomaEstablishment = v) } },
-                label = { Text("Établissement (Faculté, École, Institut)") },
+                label = { Text("Établissement (Faculté, École, Institut)", fontSize = 14.sp) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = state.diplomaYear,
                     onValueChange = { v -> viewModel.updateWizardField { it.copy(diplomaYear = v) } },
-                    label = { Text("Année d'obtention") },
+                    label = { Text("Année", fontSize = 14.sp) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(0.9f)
                 )
 
                 OutlinedTextField(
                     value = state.diplomaGpa,
                     onValueChange = { v -> viewModel.updateWizardField { it.copy(diplomaGpa = v) } },
-                    label = { Text("Moyenne générale (/20) *") },
+                    label = { Text("Moyenne (/20) *", fontSize = 14.sp) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
-                    modifier = Modifier.weight(1f).testTag("input_diploma_gpa")
+                    modifier = Modifier.weight(1.1f).testTag("input_diploma_gpa")
                 )
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Mention dropdown
             ExposedDropdownMenuBox(
                 expanded = mentionDropdownExpanded,
                 onExpandedChange = { mentionDropdownExpanded = !mentionDropdownExpanded },
@@ -666,7 +703,7 @@ fun WizardStep2DiplomaInfo(viewModel: DoctoralViewModel) {
                     value = state.diplomaMention,
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("Mention") },
+                    label = { Text("Mention", fontSize = 14.sp) },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = mentionDropdownExpanded) },
                     modifier = Modifier.menuAnchor().fillMaxWidth()
                 )
@@ -676,9 +713,9 @@ fun WizardStep2DiplomaInfo(viewModel: DoctoralViewModel) {
                 ) {
                     mentionOptions.forEach { opt ->
                         DropdownMenuItem(
-                            text = { Text(opt) },
+                            text = { Text(opt, fontSize = 14.sp) },
                             onClick = {
-                                viewModel.updateWizardField { it.copy(diplomaMention = opt.split(" ").first()) }
+                                viewModel.updateWizardField { it.copy(diplomaMention = opt.substringBefore(" (")) }
                                 mentionDropdownExpanded = false
                             }
                         )
@@ -697,11 +734,9 @@ fun WizardStep3SpecialityAndSubject(
     subjects: List<ThesisSubject>
 ) {
     val state by viewModel.wizardState.collectAsState()
-
     val availableSubjects = subjects.filter { it.specialityId == state.selectedSpecialityId }
 
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        // Speciality Picker
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Card(
             colors = CardDefaults.cardColors(containerColor = Color.White),
             border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder),
@@ -710,15 +745,16 @@ fun WizardStep3SpecialityAndSubject(
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
                 Text(
-                    text = "3.A Choix de la Spécialité Doctorale",
+                    text = "3.A Choix de la spécialité doctorale",
                     fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
+                    fontSize = 17.sp,
                     color = UniversityNavy
                 )
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Sélectionnez votre discipline de recherche pour afficher les sujets ouverts.",
-                    fontSize = 11.sp,
-                    color = Color(0xFF64748B)
+                    text = "Sélectionnez votre discipline pour afficher les sujets disponibles.",
+                    fontSize = 14.sp,
+                    color = TextMuted
                 )
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -726,29 +762,26 @@ fun WizardStep3SpecialityAndSubject(
                 specialities.forEach { spec ->
                     val isSelected = state.selectedSpecialityId == spec.id
                     Surface(
-                        color = if (isSelected) AccentBlue.copy(alpha = 0.08f) else Color(0xFFF8FAFC),
-                        shape = RoundedCornerShape(10.dp),
+                        color = if (isSelected) AccentBlue.copy(alpha = 0.08f) else BackgroundLight,
+                        shape = RoundedCornerShape(12.dp),
                         border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
+                            1.2.dp,
                             if (isSelected) AccentBlue else CardBorder
                         ),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 4.dp)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .clickable {
                                 viewModel.updateWizardField {
-                                    it.copy(
-                                        selectedSpecialityId = spec.id,
-                                        selectedSubjectId = "" // reset subject on spec change
-                                    )
+                                    it.copy(selectedSpecialityId = spec.id, selectedSubjectId = "")
                                 }
                             }
                             .testTag("speciality_option_${spec.id}")
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(12.dp)
+                            modifier = Modifier.padding(14.dp)
                         ) {
                             RadioButton(
                                 selected = isSelected,
@@ -760,18 +793,21 @@ fun WizardStep3SpecialityAndSubject(
                                 colors = RadioButtonDefaults.colors(selectedColor = AccentBlue)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = spec.nom,
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp,
+                                    fontSize = 15.sp,
                                     color = UniversityNavy
                                 )
-                                Text(
-                                    text = spec.description,
-                                    fontSize = 11.sp,
-                                    color = Color(0xFF64748B)
-                                )
+                                if (spec.description.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = spec.description,
+                                        fontSize = 13.sp,
+                                        color = TextMuted
+                                    )
+                                }
                             }
                         }
                     }
@@ -779,7 +815,6 @@ fun WizardStep3SpecialityAndSubject(
             }
         }
 
-        // Subjects list for selected speciality
         if (state.selectedSpecialityId.isNotBlank()) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -789,31 +824,32 @@ fun WizardStep3SpecialityAndSubject(
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
                     Text(
-                        text = "3.B Sujets de Recherche Disponibles",
+                        text = "3.B Sujets de recherche disponibles",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
+                        fontSize = 17.sp,
                         color = UniversityNavy
                     )
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Sélectionnez le sujet qui correspond à vos aspirations académiques.",
-                        fontSize = 11.sp,
-                        color = Color(0xFF64748B)
+                        text = "Choisissez le sujet de thèse auquel vous souhaitez postuler.",
+                        fontSize = 14.sp,
+                        color = TextMuted
                     )
 
                     Spacer(modifier = Modifier.height(14.dp))
 
                     if (availableSubjects.isEmpty()) {
                         Text(
-                            text = "Aucun sujet ouvert n'est actuellement rattaché à cette spécialité.",
-                            fontSize = 12.sp,
-                            color = Color.Gray,
-                            modifier = Modifier.padding(vertical = 10.dp)
+                            text = "Aucun sujet actif n'est actuellement rattaché à cette spécialité. Contactez l'administration ou choisissez une autre spécialité.",
+                            fontSize = 14.sp,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(vertical = 8.dp)
                         )
                     } else {
                         availableSubjects.forEach { subj ->
                             val isSelected = state.selectedSubjectId == subj.id
                             Surface(
-                                color = if (isSelected) UniversityNavy.copy(alpha = 0.06f) else Color(0xFFF8FAFC),
+                                color = if (isSelected) UniversityNavy.copy(alpha = 0.06f) else BackgroundLight,
                                 shape = RoundedCornerShape(12.dp),
                                 border = androidx.compose.foundation.BorderStroke(
                                     1.5.dp,
@@ -831,70 +867,62 @@ fun WizardStep3SpecialityAndSubject(
                                 Column(modifier = Modifier.padding(14.dp)) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween,
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
+                                        RadioButton(
+                                            selected = isSelected,
+                                            onClick = {
+                                                viewModel.updateWizardField { it.copy(selectedSubjectId = subj.id) }
+                                            },
+                                            colors = RadioButtonDefaults.colors(selectedColor = UniversityNavy)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = subj.titre,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp,
+                                            color = UniversityNavy,
                                             modifier = Modifier.weight(1f)
-                                        ) {
-                                            RadioButton(
-                                                selected = isSelected,
-                                                onClick = {
-                                                    viewModel.updateWizardField { it.copy(selectedSubjectId = subj.id) }
-                                                },
-                                                colors = RadioButtonDefaults.colors(selectedColor = UniversityNavy)
-                                            )
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text(
-                                                text = subj.titre,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 13.sp,
-                                                color = UniversityNavy
-                                            )
-                                        }
+                                        )
+                                    }
 
-                                        Surface(
-                                            color = AcademicGold.copy(alpha = 0.15f),
-                                            shape = RoundedCornerShape(10.dp)
-                                        ) {
-                                            Text(
-                                                text = "${subj.placesDisponibles} place(s)",
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = AcademicGold,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                            )
-                                        }
+                                    Spacer(modifier = Modifier.height(6.dp))
+
+                                    Surface(
+                                        color = AcademicGoldLight,
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            text = "${subj.placesDisponibles} place(s) disponible(s)",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = AcademicGoldDark,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                        )
                                     }
 
                                     Spacer(modifier = Modifier.height(8.dp))
 
                                     Text(
                                         text = subj.description,
-                                        fontSize = 11.sp,
-                                        color = Color(0xFF475569),
-                                        lineHeight = 15.sp
+                                        fontSize = 14.sp,
+                                        color = TextSecondary,
+                                        lineHeight = 20.sp
                                     )
 
                                     Spacer(modifier = Modifier.height(8.dp))
 
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text(
-                                            text = "Directeur : ${subj.directeurThese}",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = UniversityNavy
-                                        )
-                                        Text(
-                                            text = "Labo : ${subj.laboratoire}",
-                                            fontSize = 11.sp,
-                                            color = Color(0xFF64748B)
-                                        )
-                                    }
+                                    Text(
+                                        text = "Directeur : ${subj.directeurThese}",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = UniversityNavy
+                                    )
+                                    Text(
+                                        text = "Laboratoire : ${subj.laboratoire} • ${subj.etablissement}",
+                                        fontSize = 13.sp,
+                                        color = TextMuted
+                                    )
                                 }
                             }
                         }
@@ -905,22 +933,30 @@ fun WizardStep3SpecialityAndSubject(
     }
 }
 
-// STEP 4: DOCUMENTS UPLOAD & MANAGEMENT
+// STEP 4: REAL PDF DOCUMENTS UPLOAD & MANAGEMENT
 @Composable
 fun WizardStep4Documents(viewModel: DoctoralViewModel) {
     val state by viewModel.wizardState.collectAsState()
+    val context = LocalContext.current
 
-    val mandatoryTypes = listOf(
-        DocumentType.CIN,
-        DocumentType.DIPLOME,
-        DocumentType.RELEVES_NOTES,
-        DocumentType.CV,
-        DocumentType.LETTRE_MOTIVATION
-    )
+    var pendingDocType by remember { mutableStateOf<DocumentType?>(null) }
+    var uploadError by remember { mutableStateOf<String?>(null) }
 
-    val optionalTypes = listOf(
-        DocumentType.PROJET_RECHERCHE
-    )
+    val pdfPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        val docType = pendingDocType
+        if (uri != null && docType != null) {
+            uploadError = null
+            viewModel.attachPdfDocument(context, uri, docType) { err ->
+                uploadError = err
+            }
+        }
+        pendingDocType = null
+    }
+
+    val mandatoryTypes = DocumentType.values().filter { it.isMandatory }
+    val optionalTypes = DocumentType.values().filter { !it.isMandatory }
 
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -930,24 +966,42 @@ fun WizardStep4Documents(viewModel: DoctoralViewModel) {
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
             Text(
-                text = "4. Dépôt des Pièces Justificatives (Format PDF)",
+                text = "4. Dépôt des pièces justificatives (PDF)",
                 fontWeight = FontWeight.Bold,
-                fontSize = 15.sp,
+                fontSize = 17.sp,
                 color = UniversityNavy
             )
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Tous les documents doivent être au format PDF et ne pas dépasser 5 Mo chacun.",
-                fontSize = 11.sp,
-                color = Color(0xFF64748B)
+                text = "Sélectionnez de véritables fichiers PDF depuis votre appareil (taille maximale : 10 Mo par document).",
+                fontSize = 14.sp,
+                color = TextMuted
             )
 
-            Spacer(modifier = Modifier.height(14.dp))
+            if (uploadError != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    color = StatusRefusedColor.copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = uploadError!!,
+                        color = StatusRefusedColor,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             Text(
                 text = "Pièces obligatoires",
                 fontWeight = FontWeight.Bold,
-                fontSize = 12.sp,
-                color = Color(0xFF334155)
+                fontSize = 15.sp,
+                color = TextPrimary
             )
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -956,8 +1010,10 @@ fun WizardStep4Documents(viewModel: DoctoralViewModel) {
                 if (uploaded != null) {
                     DocumentItemCard(
                         doc = uploaded,
-                        onView = {},
-                        onReplace = { viewModel.addMockDocument(type) },
+                        onReplace = {
+                            pendingDocType = type
+                            pdfPickerLauncher.launch(arrayOf("application/pdf"))
+                        },
                         onDelete = { viewModel.removeDocument(type) },
                         modifier = Modifier.padding(vertical = 4.dp)
                     )
@@ -965,18 +1021,21 @@ fun WizardStep4Documents(viewModel: DoctoralViewModel) {
                     EmptyUploadRow(
                         type = type,
                         isMandatory = true,
-                        onUpload = { viewModel.addMockDocument(type) }
+                        onUpload = {
+                            pendingDocType = type
+                            pdfPickerLauncher.launch(arrayOf("application/pdf"))
+                        }
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "Pièce complémentaire / optionnelle",
+                text = "Pièce complémentaire (optionnelle)",
                 fontWeight = FontWeight.Bold,
-                fontSize = 12.sp,
-                color = Color(0xFF334155)
+                fontSize = 15.sp,
+                color = TextPrimary
             )
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -985,8 +1044,10 @@ fun WizardStep4Documents(viewModel: DoctoralViewModel) {
                 if (uploaded != null) {
                     DocumentItemCard(
                         doc = uploaded,
-                        onView = {},
-                        onReplace = { viewModel.addMockDocument(type) },
+                        onReplace = {
+                            pendingDocType = type
+                            pdfPickerLauncher.launch(arrayOf("application/pdf"))
+                        },
                         onDelete = { viewModel.removeDocument(type) },
                         modifier = Modifier.padding(vertical = 4.dp)
                     )
@@ -994,7 +1055,10 @@ fun WizardStep4Documents(viewModel: DoctoralViewModel) {
                     EmptyUploadRow(
                         type = type,
                         isMandatory = false,
-                        onUpload = { viewModel.addMockDocument(type) }
+                        onUpload = {
+                            pendingDocType = type
+                            pdfPickerLauncher.launch(arrayOf("application/pdf"))
+                        }
                     )
                 }
             }
@@ -1009,50 +1073,49 @@ fun EmptyUploadRow(
     onUpload: () -> Unit
 ) {
     Surface(
-        color = Color(0xFFF8FAFC),
-        shape = RoundedCornerShape(10.dp),
+        color = BackgroundLight,
+        shape = RoundedCornerShape(12.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder),
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier.padding(12.dp)
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = type.label,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp,
-                        color = UniversityNavy
-                    )
-                    if (isMandatory) {
-                        Text(
-                            text = " *",
-                            color = StatusRefusedColor,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
-                        )
-                    }
-                }
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = type.description,
-                    fontSize = 11.sp,
-                    color = Color(0xFF64748B)
+                    text = type.label,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = UniversityNavy
                 )
+                if (isMandatory) {
+                    Text(
+                        text = " *",
+                        color = StatusRefusedColor,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
+                }
             }
-
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = type.description,
+                fontSize = 13.sp,
+                color = TextMuted
+            )
+            Spacer(modifier = Modifier.height(10.dp))
             OutlinedButton(
                 onClick = onUpload,
                 shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.height(34.dp).testTag("btn_upload_${type.name}")
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 46.dp)
+                    .testTag("btn_upload_${type.name}")
             ) {
-                Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(14.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Joindre PDF", fontSize = 11.sp)
+                Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Sélectionner un fichier PDF", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = AccentBlue)
             }
         }
     }
@@ -1066,7 +1129,6 @@ fun WizardStep5Review(
     subjects: List<ThesisSubject>
 ) {
     val state by viewModel.wizardState.collectAsState()
-
     val spec = specialities.find { it.id == state.selectedSpecialityId }
     val subj = subjects.find { it.id == state.selectedSubjectId }
 
@@ -1078,80 +1140,78 @@ fun WizardStep5Review(
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
             Text(
-                text = "5. Récapitulatif Global de la Candidature",
+                text = "5. Récapitulatif de votre candidature",
                 fontWeight = FontWeight.Bold,
-                fontSize = 15.sp,
+                fontSize = 17.sp,
                 color = UniversityNavy
             )
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Vérifiez attentivement les renseignements ci-dessous avant la soumission définitive.",
-                fontSize = 11.sp,
-                color = Color(0xFF64748B)
+                text = "Vérifiez toutes vos informations avant la validation définitive.",
+                fontSize = 14.sp,
+                color = TextMuted
             )
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // Section 1: Candidate
-            Text(text = "Candidat", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = AccentBlue)
+            Text(text = "Candidat", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = AccentBlue)
             Spacer(modifier = Modifier.height(4.dp))
-            Text(text = "${state.prenom} ${state.nom}", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            Text(text = "CIN : ${state.cin} • CNE : ${state.cneMassar}", fontSize = 12.sp, color = Color(0xFF475569))
-            Text(text = "Email : ${state.email} • Tél : ${state.telephone}", fontSize = 12.sp, color = Color(0xFF475569))
+            Text(text = "${state.prenom} ${state.nom}", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextPrimary)
+            Text(text = "CIN : ${state.cin} • CNE : ${state.cneMassar}", fontSize = 14.sp, color = TextSecondary)
+            Text(text = "E-mail : ${state.email} • Tél : ${state.telephone}", fontSize = 14.sp, color = TextSecondary)
 
-            Spacer(modifier = Modifier.height(10.dp))
-            Divider(color = Color(0xFFF1F5F9))
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(color = CardBorder)
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Section 2: Diploma
-            Text(text = "Parcours Universitaire", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = AccentBlue)
+            Text(text = "Parcours universitaire", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = AccentBlue)
             Spacer(modifier = Modifier.height(4.dp))
-            Text(text = state.diplomaTitle, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-            Text(text = "${state.diplomaType} • Mention ${state.diplomaMention} • Moyenne: ${state.diplomaGpa}/20", fontSize = 12.sp, color = Color(0xFF475569))
-            Text(text = "${state.diplomaUniversity} (${state.diplomaYear})", fontSize = 12.sp, color = Color(0xFF475569))
+            Text(text = state.diplomaTitle, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = TextPrimary)
+            Text(text = "${state.diplomaType} • Mention ${state.diplomaMention} • Moyenne : ${state.diplomaGpa}/20", fontSize = 14.sp, color = TextSecondary)
+            Text(text = "${state.diplomaUniversity} (${state.diplomaYear})", fontSize = 14.sp, color = TextSecondary)
 
-            Spacer(modifier = Modifier.height(10.dp))
-            Divider(color = Color(0xFFF1F5F9))
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(color = CardBorder)
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Section 3: Thesis
-            Text(text = "Projet Doctoral Sélectionné", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = AccentBlue)
+            Text(text = "Projet doctoral sélectionné", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = AccentBlue)
             Spacer(modifier = Modifier.height(4.dp))
-            Text(text = "Spécialité : ${spec?.nom ?: ""}", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-            Text(text = "Sujet : ${subj?.titre ?: ""}", fontSize = 13.sp, color = UniversityNavy, fontWeight = FontWeight.Medium)
-            Text(text = "Directeur : ${subj?.directeurThese ?: ""}", fontSize = 12.sp, color = Color(0xFF475569))
-            Text(text = "Laboratoire : ${subj?.laboratoire ?: ""}", fontSize = 12.sp, color = Color(0xFF475569))
+            Text(text = "Spécialité : ${spec?.nom ?: ""}", fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = TextPrimary)
+            Text(text = "Sujet : ${subj?.titre ?: ""}", fontSize = 15.sp, color = UniversityNavy, fontWeight = FontWeight.Bold)
+            Text(text = "Directeur : ${subj?.directeurThese ?: ""}", fontSize = 14.sp, color = TextSecondary)
+            Text(text = "Laboratoire : ${subj?.laboratoire ?: ""}", fontSize = 14.sp, color = TextSecondary)
 
-            Spacer(modifier = Modifier.height(10.dp))
-            Divider(color = Color(0xFFF1F5F9))
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(color = CardBorder)
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Section 4: Documents list
-            Text(text = "Documents Déposés (${state.documents.size} fichiers)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = AccentBlue)
-            Spacer(modifier = Modifier.height(4.dp))
+            Text(text = "Documents déposés (${state.documents.size} PDF)", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = AccentBlue)
+            Spacer(modifier = Modifier.height(6.dp))
             state.documents.forEach { doc ->
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(vertical = 2.dp)
+                    modifier = Modifier.padding(vertical = 3.dp)
                 ) {
-                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = StatusAcceptedColor, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(text = "${doc.type.label} (${doc.fileName})", fontSize = 12.sp, color = Color(0xFF334155))
+                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = StatusAcceptedColor, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "${doc.type.label} (${doc.fileName})", fontSize = 14.sp, color = TextPrimary)
                 }
             }
 
             Spacer(modifier = Modifier.height(14.dp))
 
             Surface(
-                color = AcademicGold.copy(alpha = 0.12f),
-                shape = RoundedCornerShape(8.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, AcademicGold.copy(alpha = 0.5f)),
+                color = AcademicGoldLight,
+                shape = RoundedCornerShape(10.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, AcademicGoldDark.copy(alpha = 0.4f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = "En cliquant sur « Valider et soumettre », vous attestez sur l'honneur l'exactitude des informations fournies et certifiez la conformité des pièces déposées.",
-                    fontSize = 11.sp,
-                    color = Color(0xFF78350F),
-                    modifier = Modifier.padding(10.dp)
+                    text = "En cliquant sur « Valider et soumettre », vous certifiez sur l'honneur l'exactitude des renseignements et l'authenticité des pièces PDF jointes.",
+                    fontSize = 13.sp,
+                    color = AcademicGoldDark,
+                    lineHeight = 19.sp,
+                    modifier = Modifier.padding(12.dp)
                 )
             }
         }

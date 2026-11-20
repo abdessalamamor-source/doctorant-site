@@ -1,7 +1,10 @@
 package com.example.ui
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.SecurityUtils
 import com.example.data.model.ApplicationDocument
 import com.example.data.model.ApplicationStatus
 import com.example.data.model.CandidateProfile
@@ -14,6 +17,8 @@ import com.example.data.model.ThesisSubject
 import com.example.data.model.User
 import com.example.data.model.UserRole
 import com.example.data.repository.DoctoralRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -23,7 +28,13 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.random.Random
+
+enum class AdminEnvironment {
+    TEST_DEMO,
+    REAL_PRODUCTION
+}
 
 enum class AppScreen {
     HOME,
@@ -62,40 +73,45 @@ data class WizardFormState(
     val diplomaEstablishment: String = "",
     val diplomaYear: String = "2025",
     val diplomaMention: String = "Très Bien",
-    val diplomaGpa: String = "16.50",
+    val diplomaGpa: String = "",
     // Step 3: Speciality & Subject
     val selectedSpecialityId: String = "",
     val selectedSubjectId: String = "",
-    // Step 4: Documents (uploaded list)
+    // Step 4: Documents (real local PDFs)
     val documents: List<ApplicationDocument> = emptyList(),
-    // Existing application id if editing
+    // Existing application id if editing draft or updating docs requested
     val existingApplicationId: String? = null,
+    val candidateId: String? = null,
     val validationError: String? = null,
     val isSubmitting: Boolean = false,
     val submissionSuccessNumber: String? = null
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class DoctoralViewModel(
     private val repository: DoctoralRepository
 ) : ViewModel() {
 
     val currentUser: StateFlow<User?> = repository.currentUser
-    val isDemoMode: StateFlow<Boolean> = repository.isDemoMode
+    val sessionRestored: StateFlow<Boolean> = repository.sessionRestored
+    val hasAdminAccount: StateFlow<Boolean> = repository.hasAdminAccount
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     private val _currentScreen = MutableStateFlow(AppScreen.HOME)
     val currentScreen: StateFlow<AppScreen> = _currentScreen.asStateFlow()
 
     private val screenHistory = mutableListOf<AppScreen>()
 
-    // Selected application ID for Admin details or Candidate tracking
     private val _selectedApplicationId = MutableStateFlow<String?>(null)
     val selectedApplicationId: StateFlow<String?> = _selectedApplicationId.asStateFlow()
 
-    // Wizard State for candidate application
     private val _wizardState = MutableStateFlow(WizardFormState())
     val wizardState: StateFlow<WizardFormState> = _wizardState.asStateFlow()
 
-    // Admin Filters State
+    // Admin Environment & Filters State
+    private val _adminEnvironment = MutableStateFlow(AdminEnvironment.TEST_DEMO)
+    val adminEnvironment: StateFlow<AdminEnvironment> = _adminEnvironment.asStateFlow()
+
     private val _adminSearchQuery = MutableStateFlow("")
     val adminSearchQuery: StateFlow<String> = _adminSearchQuery.asStateFlow()
 
@@ -108,7 +124,7 @@ class DoctoralViewModel(
     private val _adminDiplomaFilter = MutableStateFlow<String?>(null)
     val adminDiplomaFilter: StateFlow<String?> = _adminDiplomaFilter.asStateFlow()
 
-    private val _adminSortBy = MutableStateFlow("date_desc") // "date_desc", "date_asc", "gpa_desc", "name_asc"
+    private val _adminSortBy = MutableStateFlow("date_desc")
     val adminSortBy: StateFlow<String> = _adminSortBy.asStateFlow()
 
     // Repository flows
@@ -118,8 +134,22 @@ class DoctoralViewModel(
     val allSubjects: StateFlow<List<ThesisSubject>> = repository.getAllSubjects()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val allApplications: StateFlow<List<DoctoralApplication>> = repository.getAllApplications()
+    val realApplications: StateFlow<List<DoctoralApplication>> = repository.getAllSubmittedApplications()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val testApplications: StateFlow<List<DoctoralApplication>> = repository.getAllTestApplications()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allApplications: StateFlow<List<DoctoralApplication>> = combine(
+        _adminEnvironment,
+        testApplications,
+        realApplications
+    ) { env, testApps, realApps ->
+        when (env) {
+            AdminEnvironment.TEST_DEMO -> testApps
+            AdminEnvironment.REAL_PRODUCTION -> realApps
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     data class FilterParams(
         val query: String,
@@ -139,7 +169,6 @@ class DoctoralViewModel(
         FilterParams(query, status, specId, diploma, sort)
     }
 
-    // Filtered admin applications
     val filteredApplications: StateFlow<List<DoctoralApplication>> = combine(
         allApplications,
         filterParams
@@ -149,6 +178,7 @@ class DoctoralViewModel(
                 app.candidateName.contains(params.query, ignoreCase = true) ||
                 app.id.contains(params.query, ignoreCase = true) ||
                 app.candidateCin.contains(params.query, ignoreCase = true) ||
+                app.candidateCne.contains(params.query, ignoreCase = true) ||
                 app.candidateEmail.contains(params.query, ignoreCase = true) ||
                 app.subjectTitle.contains(params.query, ignoreCase = true)
 
@@ -167,7 +197,15 @@ class DoctoralViewModel(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Candidate specific application
+    // Candidate profile & scoped applications
+    val candidateProfile: StateFlow<CandidateProfile?> = currentUser.flatMapLatest { user ->
+        if (user != null && user.role == UserRole.CANDIDAT) {
+            repository.getCandidateProfile(user.id)
+        } else {
+            flowOf(null)
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     val candidateApplications: StateFlow<List<DoctoralApplication>> = currentUser.flatMapLatest { user ->
         if (user != null && user.role == UserRole.CANDIDAT) {
             repository.getApplicationsForUser(user.id)
@@ -176,17 +214,25 @@ class DoctoralViewModel(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Selected application detail
+    val candidatePrimaryDocuments: StateFlow<List<ApplicationDocument>> = candidateApplications.flatMapLatest { apps ->
+        val first = apps.firstOrNull()
+        if (first != null) repository.getDocuments(first.id) else flowOf(emptyList())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val candidatePrimaryHistory: StateFlow<List<StatusHistoryItem>> = candidateApplications.flatMapLatest { apps ->
+        val first = apps.firstOrNull()
+        if (first != null) repository.getStatusHistory(first.id) else flowOf(emptyList())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Selected application detail (for Admin)
     val activeApplicationDetail: StateFlow<DoctoralApplication?> = _selectedApplicationId.flatMapLatest { id ->
         if (id != null) repository.getApplicationById(id) else flowOf(null)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    // Selected application documents
     val activeApplicationDocuments: StateFlow<List<ApplicationDocument>> = _selectedApplicationId.flatMapLatest { id ->
         if (id != null) repository.getDocuments(id) else flowOf(emptyList())
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Selected application history
     val activeApplicationHistory: StateFlow<List<StatusHistoryItem>> = _selectedApplicationId.flatMapLatest { id ->
         if (id != null) repository.getStatusHistory(id) else flowOf(emptyList())
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -199,6 +245,23 @@ class DoctoralViewModel(
     val unreadNotificationsCount: StateFlow<Int> = currentUser.flatMapLatest { user ->
         if (user != null) repository.getUnreadNotificationCount(user.id) else flowOf(0)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    init {
+        viewModelScope.launch {
+            sessionRestored.collect { restored ->
+                if (restored) {
+                    val user = currentUser.value
+                    if (user != null && _currentScreen.value == AppScreen.HOME) {
+                        if (user.role == UserRole.ADMINISTRATEUR) {
+                            _currentScreen.value = AppScreen.ADMIN_DASHBOARD
+                        } else {
+                            _currentScreen.value = AppScreen.CANDIDATE_DASHBOARD
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // NAVIGATION
     fun navigateTo(screen: AppScreen) {
@@ -218,10 +281,15 @@ class DoctoralViewModel(
         }
     }
 
-    // AUTH
-    fun login(email: String, pass: String, onResult: (Boolean, String?) -> Unit) {
+    // AUTHENTICATION
+    fun login(
+        email: String,
+        pass: String,
+        expectedRole: UserRole,
+        onResult: (Boolean, String?) -> Unit
+    ) {
         viewModelScope.launch {
-            val result = repository.login(email, pass)
+            val result = repository.login(email, pass, expectedRole)
             result.fold(
                 onSuccess = { user ->
                     screenHistory.clear()
@@ -229,7 +297,6 @@ class DoctoralViewModel(
                         _currentScreen.value = AppScreen.ADMIN_DASHBOARD
                     } else {
                         _currentScreen.value = AppScreen.CANDIDATE_DASHBOARD
-                        loadCandidateProfileIntoWizard(user.id)
                     }
                     onResult(true, null)
                 },
@@ -240,33 +307,59 @@ class DoctoralViewModel(
         }
     }
 
-    fun loginAsDemo(role: UserRole) {
-        viewModelScope.launch {
-            repository.loginAsDemo(role).onSuccess { user ->
-                screenHistory.clear()
-                if (user.role == UserRole.ADMINISTRATEUR) {
-                    _currentScreen.value = AppScreen.ADMIN_DASHBOARD
-                } else {
-                    _currentScreen.value = AppScreen.CANDIDATE_DASHBOARD
-                    loadCandidateProfileIntoWizard(user.id)
-                }
-            }
-        }
-    }
-
-    fun register(fullName: String, email: String, pass: String, onResult: (Boolean, String?) -> Unit) {
+    fun registerCandidate(
+        fullName: String,
+        email: String,
+        pass: String,
+        onResult: (Boolean, String?) -> Unit
+    ) {
         viewModelScope.launch {
             val result = repository.registerCandidate(fullName, email, pass)
             result.fold(
-                onSuccess = { user ->
+                onSuccess = {
                     screenHistory.clear()
                     _currentScreen.value = AppScreen.CANDIDATE_DASHBOARD
-                    loadCandidateProfileIntoWizard(user.id)
                     onResult(true, null)
                 },
                 onFailure = { err ->
                     onResult(false, err.message)
                 }
+            )
+        }
+    }
+
+    fun registerAdmin(
+        fullName: String,
+        email: String,
+        pass: String,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val result = repository.registerInitialAdmin(fullName, email, pass)
+            result.fold(
+                onSuccess = {
+                    if (currentUser.value?.role == UserRole.ADMINISTRATEUR && _currentScreen.value == AppScreen.HOME) {
+                        screenHistory.clear()
+                        _currentScreen.value = AppScreen.ADMIN_DASHBOARD
+                    }
+                    onResult(true, null)
+                },
+                onFailure = { err ->
+                    onResult(false, err.message)
+                }
+            )
+        }
+    }
+
+    fun changePassword(
+        currentPass: String,
+        newPass: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            repository.updatePassword(currentPass, newPass).fold(
+                onSuccess = { onResult(true, "Mot de passe mis à jour avec succès.") },
+                onFailure = { onResult(false, it.message ?: "Erreur lors de la mise à jour.") }
             )
         }
     }
@@ -279,115 +372,109 @@ class DoctoralViewModel(
         _wizardState.value = WizardFormState()
     }
 
-    fun requestPasswordReset(email: String, onResult: (Boolean, String) -> Unit) {
+    // CANDIDATE PROFILE SAVE
+    fun saveProfile(profile: CandidateProfile, onDone: (Boolean, String) -> Unit) {
         viewModelScope.launch {
-            val res = repository.resetPassword(email)
-            res.fold(
-                onSuccess = { msg -> onResult(true, msg) },
-                onFailure = { err -> onResult(false, err.message ?: "Erreur") }
-            )
+            try {
+                repository.saveCandidateProfile(profile)
+                onDone(true, "Vos informations personnelles ont été enregistrées.")
+            } catch (e: Exception) {
+                onDone(false, e.localizedMessage ?: "Erreur d'enregistrement.")
+            }
         }
     }
 
-    // CANDIDATE WIZARD & PROFILE
-    private fun loadCandidateProfileIntoWizard(userId: String) {
+    // CANDIDATE WIZARD
+    fun startOrResumeApplication() {
+        val user = currentUser.value ?: return
         viewModelScope.launch {
-            val profile = repository.getCandidateProfile(userId).stateIn(viewModelScope).value
-            if (profile != null) {
-                _wizardState.value = _wizardState.value.copy(
-                    nom = profile.nom,
-                    prenom = profile.prenom,
-                    dateNaissance = profile.dateNaissance,
-                    cin = profile.cin,
-                    cneMassar = profile.cneMassar,
-                    email = profile.email,
-                    telephone = profile.telephone,
-                    adresse = profile.adresse,
-                    ville = profile.ville,
-                    etablissementOrigine = profile.etablissementOrigine
+            val existing = candidateApplications.value.firstOrNull()
+            val profile = repository.getCandidateProfileSync(user.id)
+
+            if (existing != null) {
+                _selectedApplicationId.value = existing.id
+                val docs = repository.getDocumentsSync(existing.id)
+                val nameParts = existing.candidateName.trim().split(Regex("\\s+"))
+                val prenom = profile?.prenom?.ifBlank { nameParts.firstOrNull() ?: "" } ?: (nameParts.firstOrNull() ?: "")
+                val nom = profile?.nom?.ifBlank { nameParts.drop(1).joinToString(" ") } ?: nameParts.drop(1).joinToString(" ")
+
+                _wizardState.value = WizardFormState(
+                    step = 1,
+                    nom = nom,
+                    prenom = prenom,
+                    dateNaissance = existing.candidateBirthDate.ifBlank { profile?.dateNaissance ?: "" },
+                    cin = existing.candidateCin.ifBlank { profile?.cin ?: "" },
+                    cneMassar = existing.candidateCne.ifBlank { profile?.cneMassar ?: "" },
+                    email = existing.candidateEmail.ifBlank { user.email },
+                    telephone = existing.candidatePhone.ifBlank { profile?.telephone ?: "" },
+                    adresse = existing.candidateAddress.ifBlank { profile?.adresse ?: "" },
+                    ville = existing.candidateCity.ifBlank { profile?.ville ?: "" },
+                    etablissementOrigine = existing.candidateOriginEstablishment.ifBlank { profile?.etablissementOrigine ?: "" },
+                    diplomaType = existing.diplomaType.ifBlank { "Master de recherche" },
+                    diplomaTitle = existing.diplomaTitle,
+                    diplomaSpeciality = existing.diplomaSpeciality,
+                    diplomaUniversity = existing.diplomaUniversity,
+                    diplomaEstablishment = existing.diplomaEstablishment,
+                    diplomaYear = existing.diplomaYear.ifBlank { "2025" },
+                    diplomaMention = existing.diplomaMention.ifBlank { "Très Bien" },
+                    diplomaGpa = if (existing.diplomaGpa > 0.0) existing.diplomaGpa.toString() else "",
+                    selectedSpecialityId = existing.specialityId,
+                    selectedSubjectId = existing.subjectId,
+                    documents = docs,
+                    existingApplicationId = existing.id,
+                    candidateId = existing.candidateId
+                )
+            } else {
+                val names = user.fullName.trim().split(Regex("\\s+"))
+                _wizardState.value = WizardFormState(
+                    step = 1,
+                    nom = profile?.nom?.ifBlank { names.drop(1).joinToString(" ") } ?: names.drop(1).joinToString(" "),
+                    prenom = profile?.prenom?.ifBlank { names.firstOrNull() ?: "" } ?: (names.firstOrNull() ?: ""),
+                    dateNaissance = profile?.dateNaissance ?: "",
+                    cin = profile?.cin ?: "",
+                    cneMassar = profile?.cneMassar ?: "",
+                    email = profile?.email?.ifBlank { user.email } ?: user.email,
+                    telephone = profile?.telephone ?: "",
+                    adresse = profile?.adresse ?: "",
+                    ville = profile?.ville ?: "",
+                    etablissementOrigine = profile?.etablissementOrigine ?: "",
+                    candidateId = profile?.candidateId
                 )
             }
+            navigateTo(AppScreen.CANDIDATE_APPLY_WIZARD)
         }
-    }
-
-    fun startNewApplication() {
-        val user = currentUser.value ?: return
-        val currentApps = candidateApplications.value
-        val existing = currentApps.firstOrNull()
-
-        if (existing != null) {
-            // Edit or view existing
-            _selectedApplicationId.value = existing.id
-            _wizardState.value = WizardFormState(
-                step = 1,
-                nom = existing.candidateName.split(" ").getOrNull(1) ?: "",
-                prenom = existing.candidateName.split(" ").firstOrNull() ?: "",
-                cin = existing.candidateCin,
-                cneMassar = existing.candidateCne,
-                email = existing.candidateEmail,
-                telephone = existing.candidatePhone,
-                diplomaType = existing.diplomaType,
-                diplomaTitle = existing.diplomaTitle,
-                diplomaSpeciality = existing.diplomaSpeciality,
-                diplomaUniversity = existing.diplomaUniversity,
-                diplomaEstablishment = existing.diplomaEstablishment,
-                diplomaYear = existing.diplomaYear,
-                diplomaMention = existing.diplomaMention,
-                diplomaGpa = existing.diplomaGpa.toString(),
-                selectedSpecialityId = existing.specialityId,
-                selectedSubjectId = existing.subjectId,
-                existingApplicationId = existing.id
-            )
-            // Fetch documents
-            viewModelScope.launch {
-                val docs = repository.getDocuments(existing.id).stateIn(viewModelScope).value
-                _wizardState.value = _wizardState.value.copy(documents = docs)
-            }
-        } else {
-            // Initialize fresh with user details
-            val names = user.fullName.split(" ")
-            _wizardState.value = WizardFormState(
-                step = 1,
-                nom = if (names.size > 1) names.drop(1).joinToString(" ") else "",
-                prenom = names.firstOrNull() ?: "",
-                email = user.email
-            )
-        }
-        navigateTo(AppScreen.CANDIDATE_APPLY_WIZARD)
     }
 
     fun updateWizardStep(newStep: Int) {
         val s = _wizardState.value
-        // Basic validations
         if (newStep > s.step) {
             when (s.step) {
                 1 -> {
-                    if (s.nom.isBlank() || s.prenom.isBlank() || s.cin.isBlank() || s.cneMassar.isBlank() || s.email.isBlank()) {
-                        _wizardState.value = s.copy(validationError = "Veuillez renseigner les champs obligatoires (Nom, Prénom, CIN, CNE, Email).")
+                    if (s.nom.isBlank() || s.prenom.isBlank() || s.cin.isBlank() || s.cneMassar.isBlank() || s.email.isBlank() || s.telephone.isBlank()) {
+                        _wizardState.value = s.copy(validationError = "Veuillez renseigner tous les champs obligatoires (*) : Nom, Prénom, CIN, CNE, E-mail et Téléphone.")
                         return
                     }
                 }
                 2 -> {
-                    if (s.diplomaTitle.isBlank() || s.diplomaUniversity.isBlank() || s.diplomaGpa.isBlank()) {
-                        _wizardState.value = s.copy(validationError = "Veuillez renseigner l'intitulé du diplôme, l'université et la moyenne générale.")
+                    val gpaVal = s.diplomaGpa.replace(",", ".").toDoubleOrNull()
+                    if (s.diplomaTitle.isBlank() || s.diplomaUniversity.isBlank() || gpaVal == null || gpaVal < 0.0 || gpaVal > 20.0) {
+                        _wizardState.value = s.copy(validationError = "Veuillez renseigner l'intitulé du diplôme, l'université et une moyenne générale valide (entre 0 et 20).")
                         return
                     }
                 }
                 3 -> {
                     if (s.selectedSpecialityId.isBlank() || s.selectedSubjectId.isBlank()) {
-                        _wizardState.value = s.copy(validationError = "Veuillez sélectionner une spécialité et un sujet de doctorat.")
+                        _wizardState.value = s.copy(validationError = "Veuillez sélectionner une spécialité doctorale et un sujet de recherche.")
                         return
                     }
                 }
                 4 -> {
-                    // Check if mandatory documents are uploaded
-                    val hasCin = s.documents.any { it.type == DocumentType.CIN }
-                    val hasDiploma = s.documents.any { it.type == DocumentType.DIPLOME }
-                    val hasNotes = s.documents.any { it.type == DocumentType.RELEVES_NOTES }
-                    val hasCv = s.documents.any { it.type == DocumentType.CV }
-                    val hasMotivation = s.documents.any { it.type == DocumentType.LETTRE_MOTIVATION }
-                    if (!hasCin || !hasDiploma || !hasNotes || !hasCv || !hasMotivation) {
-                        _wizardState.value = s.copy(validationError = "Veuillez téléverser tous les documents obligatoires (CIN, Diplôme, Relevés, CV, Lettre).")
+                    val missingMandatory = DocumentType.values()
+                        .filter { it.isMandatory }
+                        .filter { req -> s.documents.none { it.type == req } }
+                    if (missingMandatory.isNotEmpty()) {
+                        val names = missingMandatory.joinToString(", ") { it.label }
+                        _wizardState.value = s.copy(validationError = "Pièces PDF obligatoires manquantes : $names.")
                         return
                     }
                 }
@@ -400,43 +487,83 @@ class DoctoralViewModel(
         _wizardState.value = update(_wizardState.value).copy(validationError = null)
     }
 
-    fun addMockDocument(type: DocumentType) {
+    fun attachPdfDocument(
+        context: Context,
+        uri: Uri,
+        type: DocumentType,
+        onError: (String) -> Unit
+    ) {
         val s = _wizardState.value
-        val appId = s.existingApplicationId ?: "DOC-2026-TMP"
-        val fileName = when (type) {
-            DocumentType.CIN -> "CIN_${s.cin.ifBlank { "Identite" }}.pdf"
-            DocumentType.DIPLOME -> "Diplome_${s.diplomaType.take(6).trim()}.pdf"
-            DocumentType.RELEVES_NOTES -> "Releves_Notes_Universitaires.pdf"
-            DocumentType.CV -> "CV_${s.nom}_${s.prenom}.pdf"
-            DocumentType.LETTRE_MOTIVATION -> "Lettre_Motivation_These.pdf"
-            DocumentType.PROJET_RECHERCHE -> "Projet_Recherche_Doctorale.pdf"
+        val appId = s.existingApplicationId ?: "DOC-2026-TMP-${System.currentTimeMillis() % 10000}"
+
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                SecurityUtils.copyAndValidatePdf(
+                    context = context,
+                    uri = uri,
+                    applicationId = appId,
+                    docTypeKey = type.name
+                )
+            }
+            result.fold(
+                onSuccess = { stored ->
+                    val newDoc = ApplicationDocument(
+                        id = "DOC-FILE-${System.currentTimeMillis()}-${type.name}",
+                        applicationId = appId,
+                        type = type,
+                        fileName = stored.fileName,
+                        fileSize = stored.fileSizeLabel,
+                        localFilePath = stored.localFilePath
+                    )
+                    val filtered = s.documents.filter { it.type != type } + newDoc
+                    _wizardState.value = s.copy(
+                        existingApplicationId = appId,
+                        documents = filtered,
+                        validationError = null
+                    )
+                },
+                onFailure = { err ->
+                    val msg = err.message ?: "Impossible d'importer ce document PDF."
+                    _wizardState.value = s.copy(validationError = msg)
+                    onError(msg)
+                }
+            )
         }
-        val size = "${(800..4500).random() / 1000.0}".take(4) + " Mo"
-        val newDoc = ApplicationDocument(
-            id = "DOC-FILE-${System.currentTimeMillis()}-${type.name}",
-            applicationId = appId,
-            type = type,
-            fileName = fileName,
-            fileSize = size
-        )
-        val filtered = s.documents.filter { it.type != type } + newDoc
-        _wizardState.value = s.copy(documents = filtered, validationError = null)
     }
 
     fun removeDocument(type: DocumentType) {
         val s = _wizardState.value
+        val target = s.documents.find { it.type == type }
         val filtered = s.documents.filter { it.type != type }
         _wizardState.value = s.copy(documents = filtered)
+        if (target != null) {
+            viewModelScope.launch {
+                repository.removeDocument(target.id)
+            }
+        }
     }
 
     fun submitApplication(onComplete: (String) -> Unit) {
         val user = currentUser.value ?: return
         val s = _wizardState.value
-        _wizardState.value = s.copy(isSubmitting = true)
+
+        // Final validation gate
+        val gpaVal = s.diplomaGpa.replace(",", ".").toDoubleOrNull()
+        if (s.nom.isBlank() || s.prenom.isBlank() || s.cin.isBlank() || gpaVal == null || s.selectedSpecialityId.isBlank() || s.selectedSubjectId.isBlank()) {
+            _wizardState.value = s.copy(validationError = "Le dossier est incomplet. Veuillez vérifier toutes les étapes.")
+            return
+        }
+
+        _wizardState.value = s.copy(isSubmitting = true, validationError = null)
 
         viewModelScope.launch {
-            val appId = s.existingApplicationId ?: "DOC-2026-${1000 + Random.nextInt(9000)}"
-            val candId = "CAND-2026-${1000 + Random.nextInt(9000)}"
+            val existingId = s.existingApplicationId
+            val appId = if (existingId != null && !existingId.startsWith("DOC-2026-TMP")) {
+                existingId
+            } else {
+                "DOC-2026-${1000 + Random.nextInt(9000)}"
+            }
+            val candId = s.candidateId ?: "CAND-2026-${1000 + Random.nextInt(9000)}"
 
             val spec = allSpecialities.value.find { it.id == s.selectedSpecialityId }
             val subj = allSubjects.value.find { it.id == s.selectedSubjectId }
@@ -445,11 +572,15 @@ class DoctoralViewModel(
                 id = appId,
                 candidateId = candId,
                 userId = user.id,
-                candidateName = "${s.prenom} ${s.nom}".trim(),
-                candidateEmail = s.email,
-                candidateCin = s.cin,
-                candidateCne = s.cneMassar,
-                candidatePhone = s.telephone,
+                candidateName = "${s.prenom.trim()} ${s.nom.trim()}",
+                candidateEmail = s.email.trim(),
+                candidateBirthDate = s.dateNaissance.trim(),
+                candidateCin = s.cin.trim(),
+                candidateCne = s.cneMassar.trim(),
+                candidatePhone = s.telephone.trim(),
+                candidateAddress = s.adresse.trim(),
+                candidateCity = s.ville.trim(),
+                candidateOriginEstablishment = s.etablissementOrigine.trim(),
                 specialityId = s.selectedSpecialityId,
                 specialityName = spec?.nom ?: "Spécialité doctorale",
                 subjectId = s.selectedSubjectId,
@@ -457,40 +588,41 @@ class DoctoralViewModel(
                 supervisorName = subj?.directeurThese ?: "Directeur de thèse",
                 laboratory = subj?.laboratoire ?: "Laboratoire de recherche",
                 diplomaType = s.diplomaType,
-                diplomaTitle = s.diplomaTitle,
-                diplomaSpeciality = s.diplomaSpeciality,
-                diplomaUniversity = s.diplomaUniversity,
-                diplomaEstablishment = s.diplomaEstablishment,
-                diplomaYear = s.diplomaYear,
+                diplomaTitle = s.diplomaTitle.trim(),
+                diplomaSpeciality = s.diplomaSpeciality.trim(),
+                diplomaUniversity = s.diplomaUniversity.trim(),
+                diplomaEstablishment = s.diplomaEstablishment.trim(),
+                diplomaYear = s.diplomaYear.trim(),
                 diplomaMention = s.diplomaMention,
-                diplomaGpa = s.diplomaGpa.toDoubleOrNull() ?: 15.0,
+                diplomaGpa = gpaVal,
                 submissionDate = System.currentTimeMillis(),
                 lastModifiedDate = System.currentTimeMillis(),
-                status = ApplicationStatus.PENDING,
-                adminComment = "Candidature soumise avec succès. En attente d'examen."
+                status = ApplicationStatus.SUBMITTED,
+                isDraft = false
             )
 
             val updatedDocs = s.documents.map { it.copy(applicationId = appId) }
-            repository.submitOrUpdateApplication(app, updatedDocs, isInitialSubmission = s.existingApplicationId == null)
+            repository.submitApplication(app, updatedDocs)
 
-            // Save candidate profile as well
             val profile = CandidateProfile(
                 candidateId = candId,
                 userId = user.id,
-                nom = s.nom,
-                prenom = s.prenom,
-                dateNaissance = s.dateNaissance,
-                cin = s.cin,
-                cneMassar = s.cneMassar,
-                email = s.email,
-                telephone = s.telephone,
-                adresse = s.adresse,
-                ville = s.ville,
-                etablissementOrigine = s.etablissementOrigine
+                nom = s.nom.trim(),
+                prenom = s.prenom.trim(),
+                dateNaissance = s.dateNaissance.trim(),
+                cin = s.cin.trim(),
+                cneMassar = s.cneMassar.trim(),
+                email = s.email.trim(),
+                telephone = s.telephone.trim(),
+                adresse = s.adresse.trim(),
+                ville = s.ville.trim(),
+                etablissementOrigine = s.etablissementOrigine.trim()
             )
             repository.saveCandidateProfile(profile)
 
             _wizardState.value = s.copy(
+                existingApplicationId = appId,
+                candidateId = candId,
                 isSubmitting = false,
                 submissionSuccessNumber = appId
             )
@@ -499,52 +631,118 @@ class DoctoralViewModel(
         }
     }
 
-    fun saveDraft(onSaved: () -> Unit) {
+    fun saveDraft(onSaved: (Boolean, String) -> Unit) {
         val user = currentUser.value ?: return
         val s = _wizardState.value
         viewModelScope.launch {
-            val appId = s.existingApplicationId ?: "DOC-2026-${1000 + Random.nextInt(9000)}"
-            val candId = "CAND-2026-${1000 + Random.nextInt(9000)}"
-            val spec = allSpecialities.value.find { it.id == s.selectedSpecialityId }
-            val subj = allSubjects.value.find { it.id == s.selectedSubjectId }
+            try {
+                val existingId = s.existingApplicationId
+                val appId = if (existingId != null && !existingId.startsWith("DOC-2026-TMP")) {
+                    existingId
+                } else {
+                    "DOC-2026-${1000 + Random.nextInt(9000)}"
+                }
+                val candId = s.candidateId ?: "CAND-2026-${1000 + Random.nextInt(9000)}"
+                val spec = allSpecialities.value.find { it.id == s.selectedSpecialityId }
+                val subj = allSubjects.value.find { it.id == s.selectedSubjectId }
 
-            val app = DoctoralApplication(
-                id = appId,
-                candidateId = candId,
-                userId = user.id,
-                candidateName = "${s.prenom} ${s.nom}".trim().ifBlank { user.fullName },
-                candidateEmail = s.email.ifBlank { user.email },
-                candidateCin = s.cin,
-                candidateCne = s.cneMassar,
-                candidatePhone = s.telephone,
-                specialityId = s.selectedSpecialityId,
-                specialityName = spec?.nom ?: "",
-                subjectId = s.selectedSubjectId,
-                subjectTitle = subj?.titre ?: "",
-                supervisorName = subj?.directeurThese ?: "",
-                laboratory = subj?.laboratoire ?: "",
-                diplomaType = s.diplomaType,
-                diplomaTitle = s.diplomaTitle,
-                diplomaSpeciality = s.diplomaSpeciality,
-                diplomaUniversity = s.diplomaUniversity,
-                diplomaEstablishment = s.diplomaEstablishment,
-                diplomaYear = s.diplomaYear,
-                diplomaMention = s.diplomaMention,
-                diplomaGpa = s.diplomaGpa.toDoubleOrNull() ?: 0.0,
-                submissionDate = System.currentTimeMillis(),
-                lastModifiedDate = System.currentTimeMillis(),
-                status = ApplicationStatus.PENDING,
-                adminComment = "Brouillon sauvegardé par le candidat.",
-                isDraft = true
-            )
-            val updatedDocs = s.documents.map { it.copy(applicationId = appId) }
-            repository.saveDraftApplication(app, updatedDocs)
-            _wizardState.value = s.copy(existingApplicationId = appId)
-            onSaved()
+                val app = DoctoralApplication(
+                    id = appId,
+                    candidateId = candId,
+                    userId = user.id,
+                    candidateName = "${s.prenom.trim()} ${s.nom.trim()}".ifBlank { user.fullName },
+                    candidateEmail = s.email.ifBlank { user.email },
+                    candidateBirthDate = s.dateNaissance.trim(),
+                    candidateCin = s.cin.trim(),
+                    candidateCne = s.cneMassar.trim(),
+                    candidatePhone = s.telephone.trim(),
+                    candidateAddress = s.adresse.trim(),
+                    candidateCity = s.ville.trim(),
+                    candidateOriginEstablishment = s.etablissementOrigine.trim(),
+                    specialityId = s.selectedSpecialityId,
+                    specialityName = spec?.nom ?: "",
+                    subjectId = s.selectedSubjectId,
+                    subjectTitle = subj?.titre ?: "",
+                    supervisorName = subj?.directeurThese ?: "",
+                    laboratory = subj?.laboratoire ?: "",
+                    diplomaType = s.diplomaType,
+                    diplomaTitle = s.diplomaTitle.trim(),
+                    diplomaSpeciality = s.diplomaSpeciality.trim(),
+                    diplomaUniversity = s.diplomaUniversity.trim(),
+                    diplomaEstablishment = s.diplomaEstablishment.trim(),
+                    diplomaYear = s.diplomaYear.trim(),
+                    diplomaMention = s.diplomaMention,
+                    diplomaGpa = s.diplomaGpa.replace(",", ".").toDoubleOrNull() ?: 0.0,
+                    submissionDate = System.currentTimeMillis(),
+                    lastModifiedDate = System.currentTimeMillis(),
+                    status = ApplicationStatus.DRAFT,
+                    adminComment = "Brouillon enregistré par le candidat.",
+                    isDraft = true
+                )
+
+                val updatedDocs = s.documents.map { it.copy(applicationId = appId) }
+                val savedApp = repository.saveDraftApplication(app, updatedDocs)
+
+                val profile = CandidateProfile(
+                    candidateId = candId,
+                    userId = user.id,
+                    nom = s.nom.trim(),
+                    prenom = s.prenom.trim(),
+                    dateNaissance = s.dateNaissance.trim(),
+                    cin = s.cin.trim(),
+                    cneMassar = s.cneMassar.trim(),
+                    email = s.email.ifBlank { user.email },
+                    telephone = s.telephone.trim(),
+                    adresse = s.adresse.trim(),
+                    ville = s.ville.trim(),
+                    etablissementOrigine = s.etablissementOrigine.trim()
+                )
+                repository.saveCandidateProfile(profile)
+
+                _wizardState.value = s.copy(existingApplicationId = savedApp.id, candidateId = candId)
+                onSaved(true, "Brouillon sauvegardé dans la base de données.")
+            } catch (e: Exception) {
+                onSaved(false, e.localizedMessage ?: "Échec de la sauvegarde du brouillon.")
+            }
         }
     }
 
-    // ADMIN ACTIONS
+    // ADMIN ACTIONS & TEST ENVIRONMENT CONTROL
+    fun setAdminEnvironment(env: AdminEnvironment) {
+        _adminEnvironment.value = env
+        _selectedApplicationId.value = null
+    }
+
+    fun deleteAllTestApplications(onDone: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            repository.deleteAllTestApplications().fold(
+                onSuccess = {
+                    _adminEnvironment.value = AdminEnvironment.REAL_PRODUCTION
+                    _selectedApplicationId.value = null
+                    onDone(true, "Toutes les données de démonstration ont été supprimées sans affecter les dossiers réels.")
+                },
+                onFailure = { err ->
+                    onDone(false, err.message ?: "Impossible de supprimer les données de démonstration.")
+                }
+            )
+        }
+    }
+
+    fun reseedTestApplications(onDone: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            repository.reseedTestApplications().fold(
+                onSuccess = {
+                    _adminEnvironment.value = AdminEnvironment.TEST_DEMO
+                    _selectedApplicationId.value = null
+                    onDone(true, "Les 20 candidatures de démonstration ont été générées dans l'environnement de test.")
+                },
+                onFailure = { err ->
+                    onDone(false, err.message ?: "Impossible de générer les données de test.")
+                }
+            )
+        }
+    }
+
     fun selectApplicationForDetail(appId: String) {
         _selectedApplicationId.value = appId
         navigateTo(AppScreen.ADMIN_CANDIDATE_DETAIL)
@@ -628,21 +826,16 @@ class DoctoralViewModel(
         }
     }
 
-    // DEMO DATA SEED & RESET
-    fun resetDemoData() {
-        viewModelScope.launch {
-            repository.seedDemoData()
-        }
-    }
-
-    fun clearToRealProductionMode() {
-        viewModelScope.launch {
-            repository.clearAllDataToRealMode()
-            logout()
-        }
-    }
-
+    // EXPORTS
     fun getExportCsv(): String {
         return repository.exportApplicationsToCsv(filteredApplications.value)
+    }
+
+    fun getExportListPdfBytes(): ByteArray {
+        return repository.generateApplicationsListPdf(filteredApplications.value)
+    }
+
+    fun getCandidateReceiptPdfBytes(app: DoctoralApplication): ByteArray {
+        return repository.generateCandidateReceiptPdf(app)
     }
 }

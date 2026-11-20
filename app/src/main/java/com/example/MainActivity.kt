@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import com.example.data.SessionManager
 import com.example.data.local.AppDatabase
 import com.example.data.repository.DoctoralRepository
 import com.example.ui.DoctoralViewModel
@@ -26,8 +27,10 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val database = AppDatabase.getInstance(applicationContext)
+        val sessionManager = SessionManager(applicationContext)
         val repository = DoctoralRepository(
             dao = database.applicationDao(),
+            sessionManager = sessionManager,
             scope = lifecycleScope
         )
 

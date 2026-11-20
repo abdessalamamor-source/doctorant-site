@@ -26,6 +26,12 @@ interface ApplicationDao {
     @Query("SELECT * FROM users WHERE id = :userId LIMIT 1")
     suspend fun getUserById(userId: String): User?
 
+    @Query("SELECT COUNT(*) FROM users WHERE role = 'ADMINISTRATEUR'")
+    fun observeAdminCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM users WHERE role = 'ADMINISTRATEUR'")
+    suspend fun getAdminCount(): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertUser(user: User)
 
@@ -39,12 +45,19 @@ interface ApplicationDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCandidateProfile(profile: CandidateProfile)
 
-    // APPLICATIONS
-    @Query("SELECT * FROM doctoral_applications ORDER BY submissionDate DESC")
-    fun getAllApplications(): Flow<List<DoctoralApplication>>
+    // REAL APPLICATIONS (isTestData = 0)
+    @Query("SELECT * FROM doctoral_applications WHERE isDraft = 0 AND isTestData = 0 ORDER BY submissionDate DESC")
+    fun getAllSubmittedApplications(): Flow<List<DoctoralApplication>>
 
-    @Query("SELECT * FROM doctoral_applications WHERE userId = :userId ORDER BY submissionDate DESC")
+    @Query("SELECT * FROM doctoral_applications WHERE userId = :userId AND isTestData = 0 ORDER BY lastModifiedDate DESC")
     fun getApplicationsByUserId(userId: String): Flow<List<DoctoralApplication>>
+
+    // TEST / DEMO APPLICATIONS (isTestData = 1)
+    @Query("SELECT * FROM doctoral_applications WHERE isTestData = 1 ORDER BY submissionDate DESC")
+    fun getAllTestApplications(): Flow<List<DoctoralApplication>>
+
+    @Query("SELECT COUNT(*) FROM doctoral_applications WHERE isTestData = 1")
+    suspend fun getTestApplicationCount(): Int
 
     @Query("SELECT * FROM doctoral_applications WHERE id = :applicationId LIMIT 1")
     fun getApplicationById(applicationId: String): Flow<DoctoralApplication?>
@@ -55,15 +68,30 @@ interface ApplicationDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertApplication(application: DoctoralApplication)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertApplications(applications: List<DoctoralApplication>)
+
     @Update
     suspend fun updateApplication(application: DoctoralApplication)
 
     @Delete
     suspend fun deleteApplication(application: DoctoralApplication)
 
+    @Query("DELETE FROM status_history WHERE applicationId IN (SELECT id FROM doctoral_applications WHERE isTestData = 1)")
+    suspend fun deleteAllTestStatusHistory()
+
+    @Query("DELETE FROM application_documents WHERE isTestData = 1")
+    suspend fun deleteAllTestDocuments()
+
+    @Query("DELETE FROM doctoral_applications WHERE isTestData = 1")
+    suspend fun deleteAllTestApplications()
+
     // DOCUMENTS
     @Query("SELECT * FROM application_documents WHERE applicationId = :applicationId ORDER BY uploadDate ASC")
     fun getDocumentsByApplicationId(applicationId: String): Flow<List<ApplicationDocument>>
+
+    @Query("SELECT * FROM application_documents WHERE applicationId = :applicationId ORDER BY uploadDate ASC")
+    suspend fun getDocumentsByApplicationIdSync(applicationId: String): List<ApplicationDocument>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDocuments(documents: List<ApplicationDocument>)
@@ -81,7 +109,13 @@ interface ApplicationDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertStatusHistory(item: StatusHistoryItem)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertStatusHistories(items: List<StatusHistoryItem>)
+
     // SPECIALITIES
+    @Query("SELECT COUNT(*) FROM specialities")
+    suspend fun getSpecialityCount(): Int
+
     @Query("SELECT * FROM specialities ORDER BY orderIndex ASC, nom ASC")
     fun getAllSpecialities(): Flow<List<Speciality>>
 
@@ -128,29 +162,4 @@ interface ApplicationDao {
 
     @Query("UPDATE notifications SET isRead = 1 WHERE userId = :userId")
     suspend fun markAllNotificationsAsRead(userId: String)
-
-    // BULK OPERATIONS FOR DEMO SEEDING
-    @Query("DELETE FROM doctoral_applications")
-    suspend fun clearApplications()
-
-    @Query("DELETE FROM application_documents")
-    suspend fun clearDocuments()
-
-    @Query("DELETE FROM status_history")
-    suspend fun clearStatusHistory()
-
-    @Query("DELETE FROM notifications")
-    suspend fun clearNotifications()
-
-    @Query("DELETE FROM specialities")
-    suspend fun clearSpecialities()
-
-    @Query("DELETE FROM thesis_subjects")
-    suspend fun clearSubjects()
-
-    @Query("DELETE FROM candidate_profiles")
-    suspend fun clearProfiles()
-
-    @Query("DELETE FROM users")
-    suspend fun clearUsers()
 }

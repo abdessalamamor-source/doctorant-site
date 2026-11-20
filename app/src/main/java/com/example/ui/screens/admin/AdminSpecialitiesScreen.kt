@@ -3,15 +3,19 @@ package com.example.ui.screens.admin
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -19,8 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Category
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -28,13 +31,13 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -55,9 +58,13 @@ import com.example.ui.AppScreen
 import com.example.ui.DoctoralViewModel
 import com.example.ui.components.UniversityHeader
 import com.example.ui.theme.AccentBlue
+import com.example.ui.theme.BackgroundLight
 import com.example.ui.theme.CardBorder
 import com.example.ui.theme.StatusAcceptedColor
 import com.example.ui.theme.StatusRefusedColor
+import com.example.ui.theme.TextMuted
+import com.example.ui.theme.TextPrimary
+import com.example.ui.theme.TextSecondary
 import com.example.ui.theme.UniversityNavy
 
 @Composable
@@ -71,74 +78,86 @@ fun AdminSpecialitiesScreen(
 
     var showEditDialog by remember { mutableStateOf(false) }
     var editingSpeciality by remember { mutableStateOf<Speciality?>(null) }
+    var deletingSpeciality by remember { mutableStateOf<Speciality?>(null) }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF8FAFC))
+            .background(BackgroundLight)
             .testTag("admin_specialities_screen")
     ) {
         UniversityHeader(
-            title = "Gestion des Spécialités",
+            title = "Gestion des spécialités",
             subtitle = "${specialities.size} spécialité(s) configurée(s)",
             currentUser = currentUser,
             onBack = { viewModel.navigateTo(AppScreen.ADMIN_DASHBOARD) }
         )
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp)
+        BoxWithConstraints(
+            contentAlignment = Alignment.TopCenter,
+            modifier = Modifier.fillMaxSize()
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
+            val hPad = if (maxWidth >= 600.dp) 24.dp else 16.dp
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 860.dp)
+                    .padding(horizontal = hPad, vertical = 16.dp)
             ) {
-                Text(
-                    text = "Disciplines Doctorales",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = UniversityNavy
-                )
-
-                Button(
-                    onClick = {
-                        editingSpeciality = null
-                        showEditDialog = true
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = UniversityNavy),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.testTag("btn_add_speciality")
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Ajouter", fontSize = 12.sp)
-                }
-            }
+                    Text(
+                        text = "Disciplines doctorales",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = UniversityNavy,
+                        modifier = Modifier.weight(1f)
+                    )
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(specialities) { spec ->
-                    val candCount = allApplications.count { it.specialityId == spec.id }
-                    SpecialityItemCard(
-                        speciality = spec,
-                        candidateCount = candCount,
-                        onEdit = {
-                            editingSpeciality = spec
+                    Button(
+                        onClick = {
+                            editingSpeciality = null
                             showEditDialog = true
                         },
-                        onToggle = { isActive ->
-                            viewModel.saveSpeciality(spec.copy(isActive = isActive))
-                        },
-                        onDelete = {
-                            viewModel.deleteSpeciality(spec)
-                        }
-                    )
+                        colors = ButtonDefaults.buttonColors(containerColor = UniversityNavy),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                        modifier = Modifier
+                            .heightIn(min = 46.dp)
+                            .testTag("btn_add_speciality")
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Ajouter", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(specialities) { spec ->
+                        val candCount = allApplications.count { it.specialityId == spec.id }
+                        SpecialityItemCard(
+                            speciality = spec,
+                            candidateCount = candCount,
+                            onEdit = {
+                                editingSpeciality = spec
+                                showEditDialog = true
+                            },
+                            onToggle = { isActive ->
+                                viewModel.saveSpeciality(spec.copy(isActive = isActive))
+                            },
+                            onDelete = {
+                                deletingSpeciality = spec
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -154,6 +173,53 @@ fun AdminSpecialitiesScreen(
             }
         )
     }
+
+    if (deletingSpeciality != null) {
+        val target = deletingSpeciality!!
+        Dialog(onDismissRequest = { deletingSpeciality = null }) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.padding(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text(
+                        text = "Supprimer cette spécialité ?",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = UniversityNavy
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Voulez-vous vraiment supprimer « ${target.nom} » ? Cette action est définitive.",
+                        fontSize = 14.sp,
+                        color = TextSecondary
+                    )
+                    Spacer(modifier = Modifier.height(18.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { deletingSpeciality = null },
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                        ) {
+                            Text("Annuler", fontSize = 14.sp, color = TextPrimary)
+                        }
+                        Button(
+                            onClick = {
+                                viewModel.deleteSpeciality(target)
+                                deletingSpeciality = null
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = StatusRefusedColor),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                        ) {
+                            Text("Supprimer", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -167,10 +233,10 @@ fun SpecialityItemCard(
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White),
         border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(14.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -180,35 +246,36 @@ fun SpecialityItemCard(
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .size(34.dp)
+                            .size(40.dp)
                             .clip(CircleShape)
-                            .background(AccentBlue.copy(alpha = 0.12f))
+                            .background(AccentBlue.copy(alpha = 0.14f))
                     ) {
                         Icon(
                             imageVector = Icons.Default.Category,
                             contentDescription = null,
                             tint = AccentBlue,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.width(10.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
                             text = speciality.nom,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
+                            fontSize = 16.sp,
                             color = UniversityNavy
                         )
+                        Spacer(modifier = Modifier.height(4.dp))
                         Surface(
-                            color = UniversityNavy.copy(alpha = 0.08f),
-                            shape = RoundedCornerShape(6.dp)
+                            color = UniversityNavy.copy(alpha = 0.1f),
+                            shape = RoundedCornerShape(8.dp)
                         ) {
                             Text(
-                                text = "$candidateCount candidat(s) inscrit(s)",
-                                fontSize = 10.sp,
+                                text = "$candidateCount dossier(s) • ${if (speciality.isActive) "Active" else "Masquée"}",
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = UniversityNavy,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                             )
                         }
                     }
@@ -220,18 +287,22 @@ fun SpecialityItemCard(
                         onCheckedChange = onToggle,
                         colors = SwitchDefaults.colors(checkedThumbColor = StatusAcceptedColor)
                     )
-                    IconButton(onClick = onEdit) {
-                        Icon(Icons.Default.Edit, contentDescription = "Modifier", tint = AccentBlue, modifier = Modifier.size(18.dp))
+                    IconButton(onClick = onEdit, modifier = Modifier.minimumInteractiveComponentSize()) {
+                        Icon(Icons.Default.Edit, contentDescription = "Modifier", tint = AccentBlue)
+                    }
+                    IconButton(onClick = onDelete, modifier = Modifier.minimumInteractiveComponentSize()) {
+                        Icon(Icons.Default.DeleteOutline, contentDescription = "Supprimer", tint = StatusRefusedColor)
                     }
                 }
             }
 
             if (speciality.description.isNotBlank()) {
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = speciality.description,
-                    fontSize = 11.sp,
-                    color = Color(0xFF64748B)
+                    fontSize = 14.sp,
+                    color = TextSecondary,
+                    lineHeight = 20.sp
                 )
             }
         }
@@ -258,7 +329,7 @@ fun SpecialityEditDialog(
                 Text(
                     text = if (initial != null) "Modifier la spécialité" else "Nouvelle spécialité doctorale",
                     fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
+                    fontSize = 18.sp,
                     color = UniversityNavy
                 )
                 Spacer(modifier = Modifier.height(14.dp))
@@ -266,7 +337,7 @@ fun SpecialityEditDialog(
                 OutlinedTextField(
                     value = nom,
                     onValueChange = { nom = it },
-                    label = { Text("Intitulé de la spécialité *") },
+                    label = { Text("Intitulé de la spécialité *", fontSize = 14.sp) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().testTag("input_speciality_name")
                 )
@@ -276,7 +347,7 @@ fun SpecialityEditDialog(
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
-                    label = { Text("Description des axes de recherche") },
+                    label = { Text("Description des axes de recherche", fontSize = 14.sp) },
                     minLines = 2,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -288,18 +359,28 @@ fun SpecialityEditDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(text = "Spécialité active et visible aux candidats", fontSize = 12.sp)
+                    Text(
+                        text = "Spécialité visible aux candidats",
+                        fontSize = 14.sp,
+                        color = TextPrimary,
+                        modifier = Modifier.weight(1f)
+                    )
                     Switch(checked = isActive, onCheckedChange = { isActive = it })
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(18.dp))
 
                 Row(
-                    horizontalArrangement = Arrangement.End,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    OutlinedButton(onClick = onDismiss) { Text("Annuler") }
-                    Spacer(modifier = Modifier.width(8.dp))
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                    ) {
+                        Text("Annuler", fontSize = 14.sp, color = TextPrimary)
+                    }
                     Button(
                         onClick = {
                             if (nom.isNotBlank()) {
@@ -307,15 +388,20 @@ fun SpecialityEditDialog(
                                     id = initial?.id ?: "SPEC-${System.currentTimeMillis() % 10000}",
                                     nom = nom.trim(),
                                     description = description.trim(),
-                                    isActive = isActive
+                                    isActive = isActive,
+                                    orderIndex = initial?.orderIndex ?: 99
                                 )
                                 onSave(spec)
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = UniversityNavy),
-                        modifier = Modifier.testTag("btn_save_speciality")
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .testTag("btn_save_speciality")
                     ) {
-                        Text("Enregistrer")
+                        Text("Enregistrer", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

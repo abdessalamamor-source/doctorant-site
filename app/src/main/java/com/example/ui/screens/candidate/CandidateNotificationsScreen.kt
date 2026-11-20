@@ -3,30 +3,30 @@ package com.example.ui.screens.candidate
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -38,16 +38,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.NotificationItem
-import com.example.ui.AppScreen
 import com.example.ui.DoctoralViewModel
 import com.example.ui.components.UniversityHeader
-import com.example.ui.theme.AcademicGold
 import com.example.ui.theme.AccentBlue
+import com.example.ui.theme.BackgroundLight
 import com.example.ui.theme.CardBorder
-import com.example.ui.theme.StatusAcceptedColor
+import com.example.ui.theme.TextMuted
+import com.example.ui.theme.TextPrimary
+import com.example.ui.theme.TextSecondary
 import com.example.ui.theme.UniversityNavy
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -67,7 +69,7 @@ fun CandidateNotificationsScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF8FAFC))
+            .background(BackgroundLight)
             .testTag("candidate_notifications_screen")
     ) {
         UniversityHeader(
@@ -77,68 +79,78 @@ fun CandidateNotificationsScreen(
             onBack = { viewModel.goBack() }
         )
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp)
+        BoxWithConstraints(
+            contentAlignment = Alignment.TopCenter,
+            modifier = Modifier.fillMaxSize()
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
+            val hPad = if (maxWidth >= 600.dp) 24.dp else 16.dp
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 760.dp)
+                    .padding(horizontal = hPad, vertical = 16.dp)
             ) {
-                Text(
-                    text = "Historique des notifications",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = UniversityNavy
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Suivi des notifications",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        color = UniversityNavy
+                    )
 
-                if (unreadCount > 0) {
-                    OutlinedButton(
-                        onClick = { viewModel.markAllNotificationsAsRead() },
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.testTag("btn_mark_all_read")
+                    if (unreadCount > 0) {
+                        OutlinedButton(
+                            onClick = { viewModel.markAllNotificationsAsRead() },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .heightIn(min = 44.dp)
+                                .testTag("btn_mark_all_read")
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Tout marquer lu", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = AccentBlue)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                if (notifications.isEmpty()) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(32.dp)
                     ) {
-                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Tout marquer comme lu", fontSize = 11.sp)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Default.NotificationsOff,
+                                contentDescription = null,
+                                tint = TextMuted,
+                                modifier = Modifier.size(56.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "Aucune notification pour le moment",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 16.sp,
+                                color = TextSecondary,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            if (notifications.isEmpty()) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(40.dp)
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.NotificationsOff,
-                            contentDescription = null,
-                            tint = Color(0xFFCBD5E1),
-                            modifier = Modifier.size(56.dp)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "Aucune notification pour le moment",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp,
-                            color = Color(0xFF64748B)
-                        )
-                    }
-                }
-            } else {
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(notifications) { notif ->
-                        NotificationCard(notif = notif, dateFormat = dateFormat)
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(notifications) { notif ->
+                            NotificationCard(notif = notif, dateFormat = dateFormat)
+                        }
                     }
                 }
             }
@@ -153,87 +165,58 @@ fun NotificationCard(
 ) {
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = if (!notif.isRead) Color(0xFFF0F7FF) else Color.White
+            containerColor = if (!notif.isRead) Color(0xFFEFF6FF) else Color.White
         ),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            if (!notif.isRead) AccentBlue.copy(alpha = 0.5f) else CardBorder
+            if (!notif.isRead) AccentBlue.copy(alpha = 0.6f) else CardBorder
         ),
         shape = RoundedCornerShape(12.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(if (!notif.isRead) AccentBlue.copy(alpha = 0.15f) else Color(0xFFF1F5F9))
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Notifications,
-                            contentDescription = null,
-                            tint = if (!notif.isRead) AccentBlue else Color(0xFF64748B),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = notif.title,
-                        fontWeight = if (!notif.isRead) FontWeight.Bold else FontWeight.SemiBold,
-                        fontSize = 13.sp,
-                        color = UniversityNavy
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(if (!notif.isRead) AccentBlue.copy(alpha = 0.16f) else Color(0xFFE2E8F0))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Notifications,
+                        contentDescription = null,
+                        tint = if (!notif.isRead) AccentBlue else TextMuted,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
-
-                Text(
-                    text = dateFormat.format(Date(notif.timestamp)),
-                    fontSize = 10.sp,
-                    color = Color(0xFF94A3B8)
-                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = notif.title,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = UniversityNavy
+                    )
+                    Text(
+                        text = dateFormat.format(Date(notif.timestamp)),
+                        fontSize = 12.sp,
+                        color = TextMuted
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             Text(
                 text = notif.message,
-                fontSize = 12.sp,
-                color = Color(0xFF334155),
-                lineHeight = 16.sp
+                fontSize = 14.sp,
+                color = TextPrimary,
+                lineHeight = 20.sp
             )
-
-            if (notif.emailSubject.isNotBlank()) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Surface(
-                    color = Color.White.copy(alpha = 0.9f),
-                    shape = RoundedCornerShape(6.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Email,
-                            contentDescription = null,
-                            tint = StatusAcceptedColor,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Copie e-mail transmise : ${notif.emailSubject}",
-                            fontSize = 10.sp,
-                            color = Color(0xFF475569)
-                        )
-                    }
-                }
-            }
         }
     }
 }
